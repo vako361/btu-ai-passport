@@ -1,0 +1,42 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_24-bc6f84487db528c5047a3f01e266fb67cbd048f7",
+  "solcVersion": "0.8.24",
+  "solcLongVersion": "0.8.24+commit.e11b9ed9",
+  "compilerType": "solc",
+  "userSourceNameMap": {
+    "contracts/PassportVerifier.sol": "project/contracts/PassportVerifier.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "shanghai",
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode.linkReferences",
+            "evm.bytecode.object",
+            "evm.bytecode.opcodes",
+            "evm.bytecode.sourceMap",
+            "evm.deployedBytecode.immutableReferences",
+            "evm.deployedBytecode.linkReferences",
+            "evm.deployedBytecode.object",
+            "evm.deployedBytecode.opcodes",
+            "evm.deployedBytecode.sourceMap",
+            "evm.methodIdentifiers"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/PassportVerifier.sol": {
+        "content": "// SPDX-License-Identifier: MIT\r\npragma solidity ^0.8.20;\r\n\r\ncontract PassportVerifier {\r\n    address public owner;\r\n\r\n    struct PassportRecord {\r\n        string passportId;\r\n        string verificationId;\r\n        bytes32 docHash;\r\n        uint256 version;\r\n        uint256 timestamp;\r\n        bool isLatest;\r\n    }\r\n\r\n    mapping(string => PassportRecord) public recordsByVerificationId;\r\n\r\n    event PassportRegistered(string passportId, string verificationId, bytes32 docHash, uint256 version);\r\n\r\n    modifier onlyOwner() {\r\n        require(msg.sender == owner, \"Only BTU can register passports\");\r\n        _;\r\n    }\r\n\r\n    constructor() {\r\n        owner = msg.sender;\r\n    }\r\n\r\n    function registerPassport(\r\n        string memory _passportId,\r\n        string memory _verificationId,\r\n        bytes32 _docHash,\r\n        uint256 _version,\r\n        string memory _previousVerificationId\r\n    ) external onlyOwner {\r\n        if (bytes(_previousVerificationId).length > 0) {\r\n            recordsByVerificationId[_previousVerificationId].isLatest = false;\r\n        }\r\n\r\n        recordsByVerificationId[_verificationId] = PassportRecord({\r\n            passportId: _passportId,\r\n            verificationId: _verificationId,\r\n            docHash: _docHash,\r\n            version: _version,\r\n            timestamp: block.timestamp,\r\n            isLatest: true\r\n        });\r\n\r\n        emit PassportRegistered(_passportId, _verificationId, _docHash, _version);\r\n    }\r\n\r\n    function getPassport(string memory _verificationId) external view returns (PassportRecord memory) {\r\n        return recordsByVerificationId[_verificationId];\r\n    }\r\n}"
+      }
+    }
+  }
+}
