@@ -1,29 +1,35 @@
 import { NextResponse } from 'next/server';
+import { processPassportWorkflow } from '../../../lib/passportService';
 
 export async function POST(request: Request) {
   try {
-    // 1. ვკითხულობთ Google Sheets-დან გამოგზავნილ JSON მონაცემებს
     const body = await request.json();
+    console.log('✅ Webhook მიღებულია, ვიწყებთ დამუშავებას...');
 
-    // 2. ვბეჭდავთ კონსოლში (ტერმინალში), რომ დავრწმუნდეთ მონაცემების მიღებაში
-    console.log('✅ ახალი მონაცემი მიღებულია Webhook-დან:');
-    console.log(JSON.stringify(body, null, 2));
+    // 1. PDF-ის გენერაცია
+    // მომავალში აქ იქნება: const pdfBuffer = await generatePDF(body);
+    // დროებით ვქმნით ყალბ "ფაილს" ტექსტისგან, რათა ტესტირება შევძლოთ:
+    const tempPdfBuffer = Buffer.from(`ეს არის დროებითი PDF ფაილი სტუდენტისთვის: ${body["First Name"]}`);
 
-    // 💡 (აქ მომავალში ჩაემატება PDF გენერაციისა და ბაზის გადამოწმების ლოგიკა)
+    // 2. გადავცემთ body-ს და შექმნილ pdfBuffer-ს ჩვენს ლოგიკის ძრავს
+    const result = await processPassportWorkflow(body, tempPdfBuffer);
 
-    // 3. ვაბრუნებთ 200 OK სტატუსს, რომ Google Sheets-მა იცოდეს სიგნალის წარმატებით მიღების შესახებ
+    if (!result.success) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+
     return NextResponse.json(
-      { success: true, message: 'Webhook წარმატებით მიღებულია' },
+      { 
+        success: true, 
+        message: 'პასპორტი შეიქმნა და ჩაიწერა ბლოკჩეინზე',
+        data: result.data,
+        transactionHash: result.txHash 
+      },
       { status: 200 }
     );
     
   } catch (error) {
-    console.error('❌ შეცდომა Webhook-ის დამუშავებისას:', error);
-    
-    // შეცდომის შემთხვევაში ვაბრუნებთ 500 სტატუსს
-    return NextResponse.json(
-      { success: false, message: 'შეცდომა მონაცემების მიღებისას' },
-      { status: 500 }
-    );
+    console.error('❌ კრიტიკული შეცდომა:', error);
+    return NextResponse.json({ success: false, details: String(error) }, { status: 500 });
   }
 }

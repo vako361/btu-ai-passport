@@ -1,0 +1,16 @@
+{
+  "C:\\Users\\White Boss\\Desktop\\AI-Passport\\btu-ai-passport\\contracts\\PassportVerifier.sol": {
+    "jobHash": "solc-0_8_24-bc6f84487db528c5047a3f01e266fb67cbd048f7",
+    "isolated": false,
+    "compilerType": "solc",
+    "artifactPaths": [
+      "C:\\Users\\White Boss\\Desktop\\AI-Passport\\btu-ai-passport\\artifacts\\contracts\\PassportVerifier.sol\\PassportVerifier.json"
+    ],
+    "buildInfoPath": "C:\\Users\\White Boss\\Desktop\\AI-Passport\\btu-ai-passport\\artifacts\\build-info\\solc-0_8_24-bc6f84487db528c5047a3f01e266fb67cbd048f7.json",
+    "buildInfoOutputPath": "C:\\Users\\White Boss\\Desktop\\AI-Passport\\btu-ai-passport\\artifacts\\build-info\\solc-0_8_24-bc6f84487db528c5047a3f01e266fb67cbd048f7.output.json",
+    "typeFilePath": "C:\\Users\\White Boss\\Desktop\\AI-Passport\\btu-ai-passport\\artifacts\\contracts\\PassportVerifier.sol\\artifacts.d.ts",
+    "wasm": false,
+    "artifactsDirectory": "C:\\Users\\White Boss\\Desktop\\AI-Passport\\btu-ai-passport\\artifacts",
+    "emitsTypeDeclarations": true
+  }
+}
