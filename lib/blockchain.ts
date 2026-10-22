@@ -1,4 +1,5 @@
 import { ethers } from 'ethers';
+import PassportVerifierABI from '../artifacts/contracts/PassportVerifier.sol/PassportVerifier.json';
 
 const RPC_URL = process.env.BLOCKCHAIN_RPC_URL;
 const PRIVATE_KEY = process.env.ISSUER_PRIVATE_KEY;
@@ -40,4 +41,33 @@ export async function registerPassportOnChain(
 
   const receipt = await tx.wait(); // ველოდებით ტრანზაქციის დადასტურებას
   return receipt.hash;
+}
+
+// დოკუმენტის შემოწმება
+export async function verifyDocumentOnChain(docHashOrId: string, isHash: boolean) {
+  const provider = new ethers.JsonRpcProvider(process.env.BLOCKCHAIN_RPC_URL);
+  const contract = new ethers.Contract(
+    process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as string,
+    PassportVerifierABI.abi,
+    provider
+  );
+
+  try {
+    // იძახებს სმარტ-კონტრაქტის რეალურ ფუნქციას: getPassport
+    const result = await contract.getPassport(docHashOrId); 
+    
+    // ვამოწმებთ, დაბრუნდა თუ არა ვალიდური ჩანაწერი (ვერსია მეტია 0-ზე)
+    const isValid = result && Number(result.version) > 0;
+    
+    return {
+      isValid,
+      passportId: result.passportId,
+      verificationId: result.verificationId,
+      version: result.version.toString(),
+      isLatest: result.isLatest
+    };
+  } catch (error) {
+    console.error("❌ გადამოწმება ვერ მოხერხდა:", error);
+    return { isValid: false, error: "დოკუმენტი არ მოიძებნა ან გაყალბებულია" };
+  }
 }
