@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { processPassportWorkflow } from '../../../lib/passportService';
+import { processPassportWorkflow } from '../../../../lib/passportService';
 
 export async function POST(request: Request) {
   try {
