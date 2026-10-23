@@ -2,9 +2,9 @@ import { registerPassportOnChain } from '@/lib/blockchain';
 import crypto from 'crypto';
 
 // =====================================================================
-// 1. მთავარი მენეჯერი: იღებს მონაცემებს და PDF-ის ბუფერს
+// 1. მთავარი მენეჯერი: იღებს მონაცემებს, PDF-ის ბუფერს და verificationId-ს
 // =====================================================================
-export async function processPassportWorkflow(body: any, pdfBuffer: Buffer) {
+export async function processPassportWorkflow(body: any, pdfBuffer: Buffer, verificationId: string) {
   // ეტაპი A: ვალიდაცია
   if (!body["Student ID"] || !body["First Name"] || !body["Skill Name"]) {
     return { success: false, error: "აუცილებელი ველები არასრულყოფილია" };
@@ -14,8 +14,8 @@ export async function processPassportWorkflow(body: any, pdfBuffer: Buffer) {
   // (ბლოკჩეინს სჭირდება 0x პრეფიქსი)
   const docHashHex = "0x" + crypto.createHash('sha256').update(pdfBuffer).digest('hex');
 
-  // ეტაპი C: მონაცემების გამზადება ბლოკჩეინისთვის
-  const passportRecord = preparePassportData(body, docHashHex);
+  // ეტაპი C: მონაცემების გამზადება ბლოკჩეინისთვის (ვაწვდით verificationId-საც)
+  const passportRecord = preparePassportData(body, docHashHex, verificationId);
 
   // ეტაპი D: ბლოკჩეინზე ჩაწერა
   const txHash = await executeBlockchainTransaction(passportRecord);
@@ -30,7 +30,7 @@ export async function processPassportWorkflow(body: any, pdfBuffer: Buffer) {
 // =====================================================================
 // 2. ლოგიკა, ვერსიები და უნიკალური კოდები
 // =====================================================================
-function preparePassportData(body: any, docHashHex: string) {
+function preparePassportData(body: any, docHashHex: string, verificationId: string) {
   const studentId = body["Student ID"];
   const existingPassportId = body["Passport ID (Existing)"];
 
@@ -45,7 +45,7 @@ function preparePassportData(body: any, docHashHex: string) {
     passportId = `BTU-AI-${studentId}`;
   }
 
-  const verificationId = `VER-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+  // აქ წაიშალა randomBytes-ით ID-ის შექმნის ხაზი, რადგან ზემოდან ვიღებთ
 
   return { passportId, verificationId, docHashHex, version, prevVerificationId };
 }
