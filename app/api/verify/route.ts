@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
+import { PDFDocument } from 'pdf-lib';
 import { verifyDocumentOnChain } from '@/lib/blockchain';
 
 export async function POST(request: Request) {
@@ -9,40 +10,65 @@ export async function POST(request: Request) {
     const file = formData.get('file') as File | null;
     const verificationId = formData.get('verificationId') as string | null;
 
-    // სცენარი A: გადმოიგზავნა PDF ფაილი
+    // ==============================================================
+    // სცენარი 1: მომხმარებელმა ატვირთა PDF ფაილი
+    // ==============================================================
     if (file) {
-      console.log(`📄 ვამოწმებთ ფაილს: ${file.name}`);
-      
-      // 1. ფაილის წაკითხვა და ბუფერად ქცევა
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
-      
-      // 2. SHA-256 ჰეშის დათვლა ზუსტად ისე, როგორც შექმნისას
-      const docHashHex = "0x" + crypto.createHash('sha256').update(buffer).digest('hex');
-      
-      // 3. ბლოკჩეინზე გადამოწმება (ვატანთ ჰეშს და isHash = true)
-      const onChainData = await verifyDocumentOnChain(docHashHex, true);
-      
-      return NextResponse.json({ success: true, data: onChainData });
+
+      // ვერიფიკაციის კოდის ამოკითხვა მეტამონაცემებიდან
+      const pdfDoc = await PDFDocument.load(buffer);
+      const extractedId = pdfDoc.getSubject();
+
+      if (!extractedId) {
+        return NextResponse.json({ success: false, error: "ფაილში ვერიფიკაციის კოდი არ მოიძებნა." }, { status: 400 });
+      }
+
+      // ბლოკჩეინიდან მონაცემების წამოღება
+      const onChainData = await verifyDocumentOnChain(extractedId);
+      if (!onChainData.isValid) {
+        return NextResponse.json({ success: false, error: "ბლოკჩეინზე დოკუმენტი არ მოიძებნა" }, { status: 404 });
+      }
+
+      // ჰეშის შედარება დოკუმენტის უცვლელობის დასადგენად
+      const computedHashHex = "0x" + crypto.createHash('sha256').update(buffer).digest('hex');
+      const isAuthentic = computedHashHex === onChainData.docHash;
+
+      if (isAuthentic) {
+        return NextResponse.json({ 
+          success: true, 
+          type: "FILE_VERIFIED",
+          message: "დოკუმენტი 100%-ით ნამდვილია და უცვლელი!", 
+          data: onChainData 
+        });
+      } else {
+        return NextResponse.json({ success: false, error: "დოკუმენტი გაყალბებულია! ფაილის შინაარსი შეცვლილია." }, { status: 400 });
+      }
     }
 
-    // სცენარი B: გადმოიგზავნა ტექსტური ID
+    // ==============================================================
+    // სცენარი 2: მომხმარებელმა ხელით ჩაწერა Verification ID
+    // ==============================================================
     if (verificationId) {
-      console.log(`🔍 ვამოწმებთ ID-ს: ${verificationId}`);
-      
-      // ბლოკჩეინზე გადამოწმება (ვატანთ ID-ს და isHash = false)
-      const onChainData = await verifyDocumentOnChain(verificationId, false);
-      
-      return NextResponse.json({ success: true, data: onChainData });
+      const onChainData = await verifyDocumentOnChain(verificationId);
+
+      if (onChainData.isValid) {
+        return NextResponse.json({ 
+          success: true, 
+          type: "ID_FOUND",
+          message: "ოფიციალური ჩანაწერი ბლოკჩეინზე მოიძებნა (თუმცა PDF-ის უცვლელობა გადამოწმებული არაა).",
+          data: onChainData 
+        });
+      } else {
+        return NextResponse.json({ success: false, error: "ბლოკჩეინზე მსგავსი ჩანაწერი არ მოიძებნა." }, { status: 404 });
+      }
     }
 
-    return NextResponse.json(
-      { success: false, error: "ფაილი ან ID არ არის მოწოდებული" },
-      { status: 400 }
-    );
+    return NextResponse.json({ success: false, error: "არ არის მოწოდებული ფაილი ან კოდი" }, { status: 400 });
 
   } catch (error) {
-    console.error('❌ შეცდომა ვერიფიკაციისას:', error);
-    return NextResponse.json({ success: false, details: String(error) }, { status: 500 });
+    console.error('❌ ვერიფიკაციის ერორი:', error);
+    return NextResponse.json({ success: false, error: "შიდა სერვერული შეცდომა" }, { status: 500 });
   }
 }

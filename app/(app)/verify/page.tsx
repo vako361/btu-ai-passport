@@ -122,11 +122,19 @@ export default function VerifyPage() {
             </form>
 
             {result && (
-              <div className={`w-full mt-6 p-4 rounded-xl border text-center ${result.success && result.data?.isValid ? 'bg-[#F0FDF4] border-[#BBF7D0]' : 'bg-[#FEF2F2] border-[#FECACA]'}`}>
-                {result.success && result.data?.isValid ? (
-                  <h3 className="text-green-700 font-bold text-lg">✅ დოკუმენტი ნამდვილია!</h3>
+              <div className={`w-full mt-6 p-4 rounded-xl border text-center ${result.success ? 'bg-[#F0FDF4] border-[#BBF7D0]' : 'bg-[#FEF2F2] border-[#FECACA]'}`}>
+                {result.success ? (
+                  <>
+                    {result.type === "FILE_VERIFIED" ? (
+                      <h3 className="text-green-700 font-bold text-lg">✅ დოკუმენტი 100%-ით ნამდვილია და უცვლელი!</h3>
+                    ) : (
+                      <h3 className="text-blue-700 font-bold text-lg">ℹ️ ოფიციალური ჩანაწერი მოიძებნა!</h3>
+                    )}
+                    <p className="text-sm mt-2 text-gray-600">პასპორტის ID: {result.data.passportId}</p>
+                    <p className="text-sm text-gray-600">ვერსია: {result.data.version} {result.data.isLatest ? "(უახლესი)" : "(ძველი ვერსია)"}</p>
+                  </>
                 ) : (
-                  <h3 className="text-red-700 font-bold text-lg">❌ დოკუმენტი გაყალბებულია ან არ მოიძებნა.</h3>
+                  <h3 className="text-red-700 font-bold text-lg">❌ {result.error || "ვერიფიკაცია ვერ მოხერხდა."}</h3>
                 )}
               </div>
             )}

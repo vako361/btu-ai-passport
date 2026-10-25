@@ -44,7 +44,7 @@ export async function registerPassportOnChain(
 }
 
 // დოკუმენტის შემოწმება
-export async function verifyDocumentOnChain(docHashOrId: string, isHash: boolean) {
+export async function verifyDocumentOnChain(verificationId: string) {
   const provider = new ethers.JsonRpcProvider(process.env.BLOCKCHAIN_RPC_URL);
   const contract = new ethers.Contract(
     process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as string,
@@ -53,16 +53,14 @@ export async function verifyDocumentOnChain(docHashOrId: string, isHash: boolean
   );
 
   try {
-    // იძახებს სმარტ-კონტრაქტის რეალურ ფუნქციას: getPassport
-    const result = await contract.getPassport(docHashOrId); 
-    
-    // ვამოწმებთ, დაბრუნდა თუ არა ვალიდური ჩანაწერი (ვერსია მეტია 0-ზე)
+    const result = await contract.getPassport(verificationId); 
     const isValid = result && Number(result.version) > 0;
     
     return {
       isValid,
       passportId: result.passportId,
       verificationId: result.verificationId,
+      docHash: result.docHash, // 👈 ეს დაემატა შესადარებლად
       version: result.version.toString(),
       isLatest: result.isLatest
     };

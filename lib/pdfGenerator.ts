@@ -84,6 +84,9 @@ export async function generatePassportPDF(
     currentY -= 30; // ყოველ შემდეგ უნარზე ტექსტი 30 პიქსელით ქვემოთ დაიწერება
   });
 
+  pdfDoc.setSubject(verificationId); 
+  pdfDoc.setKeywords(['BTU', 'AI Skills Passport', verificationId]);
+
   // 5. ვინახავთ და ვაბრუნებთ დასრულებულ PDF ფაილს (ბლოკჩეინისთვის)
   const pdfBytes = await pdfDoc.save();
   return Buffer.from(pdfBytes);
