@@ -1,15 +1,19 @@
 @import "tailwindcss";
 
+/* თუ მაინცდამაინც ცალკე გჭირდება reset-ის და theme-ს მართვა (არ არის სავალდებულო, ზედა import-იც საკმარისია), 
+   შეიძლება ასეთი ფორმითაც:
+   @import "tailwindcss/preflight" layer(base);
+   @import "tailwindcss/utilities" layer(utilities);
+*/
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
-}
-
-@theme inline {
+  
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   /* 📌 აქ ვუთითებთ ახალ ქართულ ფონტს */
-  --font-sans: var(--font-noto-georgian); 
+  --font-sans: var(--font-noto-georgian);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,4 +26,5 @@
 body {
   background: var(--background);
   color: var(--foreground);
+  font-family: var(--font-sans), sans-serif;
 }

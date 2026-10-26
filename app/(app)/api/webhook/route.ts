@@ -1,74 +1,103 @@
+import { randomUUID } from 'node:crypto';
+import { getPayload, type Payload } from 'payload';
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
-import { processPassportWorkflow } from '../../../../lib/passportService';
-import { generatePassportPDF } from '../../../../lib/pdfGenerator';
+import config from '@payload-config';
+import { writeIntegrationLog } from '@/lib/integrationLog';
+import { SheetsIngestionError, processSheetsVerifiedSkill } from '@/lib/sheetsIngestion';
+import { parseSheetsVerifiedSkillEvent } from '@/lib/passportTypes';
+import { verifySheetsWebhookSignature } from '@/lib/sheetsWebhook';
 
-// 📌 მომავალში გამოსაყენებელი ფუნქციები (ახლა დაკომენტარებულია)
-// import { getStudentFromDB, updateStudentInDB } from '../../../../lib/dbService';
-// import { uploadPDFToStorage } from '../../../../lib/storageService';
+export const runtime = 'nodejs';
+
+const MAX_BODY_BYTES = 16 * 1024;
 
 export async function POST(request: Request) {
+  const requestId = randomUUID();
+  let payload: Payload | undefined;
+  let recordId: string | undefined;
+
+  const log = async (
+    stage: 'AUTHENTICATION' | 'VALIDATION' | 'LOOKUP' | 'INGESTION',
+    outcome: 'ACCEPTED' | 'DUPLICATE' | 'SKIPPED' | 'REJECTED' | 'FAILED',
+    message: string,
+  ) => {
+    try {
+      payload ??= await getPayload({ config });
+      await writeIntegrationLog(payload, { requestId, recordId, stage, outcome, message });
+    } catch (error) {
+      console.error(`[${requestId}] Could not initialize integration audit log`, error);
+    }
+  };
+
   try {
-    // 1. ვიღებთ 1 ახალ უნარს Webhook-იდან (შეიცავს სტუდენტის პირად ინფორმაციასაც)
-    const newSkill = await request.json(); 
-    const studentId = newSkill["Student ID"];
-    console.log('✅ Webhook მიღებულია, ვიწყებთ დამუშავებას...');
-
-    // ---------------------------------------------------------
-    // 2. 📌 (მომავალში) ბაზიდან წამოვიდოდა ძველი უნარები:
-    // const studentProfile = await getStudentFromDB(studentId);
-    // const existingSkills = studentProfile ? studentProfile.skills : [];
-    
-    // 🔹 სატესტო მონაცემები (Mock Data): ვითომ ბაზამ დაგვიბრუნა ეს 2 ძველი უნარი
-    const existingSkills = [
-      { "Skill Name": "AI Literacy", "Date Earned": "2026-09-18" },
-      { "Skill Name": "Prompt Engineering Fundamentals", "Date Earned": "2026-09-21" }
-    ];
-    // ---------------------------------------------------------
-
-    // 3. ვაერთიანებთ ძველ უნარებს და ახლად მიღებულ უნარს სრულ სიაში
-    const allSkills = [...existingSkills, newSkill];
-
-    // 4. ვქმნით ახალ ვერიფიკაციის კოდს ამ კონკრეტული ვერსიისთვის
-    const verificationId = `VER-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
-
-    // 5. ვაგენერირებთ PDF-ს
-    // newSkill -> გადავცემთ, რომ ყდაზე სტუდენტის სახელი და გვარი წაიკითხოს
-    // allSkills -> გადავცემთ, რომ მე-4 გვერდზე ცხრილი სრულად შეავსოს
-    const pdfBuffer = await generatePassportPDF(newSkill, allSkills, verificationId);
-
-    // ---------------------------------------------------------
-    // 6. 📌 (მომავალში) ორიგინალი ფაილის ატვირთვა საცავში (AWS/Payload Media)
-    // const pdfUrl = await uploadPDFToStorage(pdfBuffer, verificationId);
-    
-    // 🔹 სატესტო შენახვა: ვინახავთ ლოკალურად public ფოლდერში, რომ თვალით ვნახოთ
-    const testPdfPath = path.join(process.cwd(), 'public', 'test-passport.pdf');
-    fs.writeFileSync(testPdfPath, pdfBuffer);
-    console.log('📄 სატესტო PDF ფაილი შენახულია public ფოლდერში');
-    // ---------------------------------------------------------
-
-    // 7. 📌 (მომავალში) ბაზის განახლება გაზრდილი სრული სიით და ფაილის ლინკით
-    // await updateStudentInDB(studentId, allSkills, pdfUrl);
-
-    // 8. ვგზავნით მონაცემებს და ფაილის ბუფერს ბლოკჩეინის ლოგიკის ძრავში
-    // (აქ newSkill-ს ვატანთ, რადგან ტრანზაქცია ამ 1 კონკრეტულ განახლებას ეხება)
-    const result = await processPassportWorkflow(newSkill, pdfBuffer, verificationId);
-
-    if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 400 });
+    const rawBody = await request.text();
+    if (Buffer.byteLength(rawBody, 'utf8') > MAX_BODY_BYTES) {
+      await log('VALIDATION', 'REJECTED', 'Request body exceeded the size limit.');
+      return NextResponse.json({ success: false, requestId, error: 'Request body is too large.' }, { status: 413 });
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      message: 'პასპორტი შეიქმნა (სატესტო რეჟიმში) და ჩაიწერა',
-      txHash: result.txHash,
-      // fileUrl: pdfUrl // 📌 (მომავალში) ვაბრუნებთ გადმოსაწერ ლინკსაც
-    }, { status: 200 });
-    
+    const secret = process.env.SHEETS_WEBHOOK_SECRET;
+    if (!secret || secret.length < 32) {
+      await log('AUTHENTICATION', 'FAILED', 'Webhook secret is missing or too short.');
+      return NextResponse.json({ success: false, requestId, error: 'Webhook is not configured.' }, { status: 503 });
+    }
+
+    const authenticated = verifySheetsWebhookSignature(
+      rawBody,
+      request.headers.get('x-sheets-timestamp'),
+      request.headers.get('x-sheets-signature'),
+      secret,
+    );
+    if (!authenticated) {
+      await log('AUTHENTICATION', 'REJECTED', 'Signature is invalid or timestamp has expired.');
+      return NextResponse.json({ success: false, requestId, error: 'Unauthorized.' }, { status: 401 });
+    }
+
+    let body: unknown;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      await log('VALIDATION', 'REJECTED', 'Request body is not valid JSON.');
+      return NextResponse.json({ success: false, requestId, error: 'Invalid JSON.' }, { status: 400 });
+    }
+
+    const event = parseSheetsVerifiedSkillEvent(body);
+    if (!event) {
+      const candidate = typeof body === 'object' && body !== null ? (body as Record<string, unknown>).recordId : undefined;
+      recordId = typeof candidate === 'string' ? candidate.slice(0, 200) : undefined;
+      await log('VALIDATION', 'REJECTED', 'Required fields or field formats are invalid.');
+      return NextResponse.json({ success: false, requestId, error: 'Invalid Sheets record.' }, { status: 400 });
+    }
+    recordId = event.recordId;
+
+    payload ??= await getPayload({ config });
+    const result = await processSheetsVerifiedSkill(payload, event);
+
+    if (result.kind === 'skipped') {
+      await log('INGESTION', 'SKIPPED', result.message);
+      return NextResponse.json({ success: true, requestId, skipped: true, message: result.message }, { status: 202 });
+    }
+    if (result.kind === 'duplicate') {
+      await log('INGESTION', 'DUPLICATE', result.message);
+      return NextResponse.json({ success: true, requestId, duplicate: true, message: result.message }, { status: 200 });
+    }
+
+    await log('INGESTION', 'ACCEPTED', `Passport version ${result.version} issued; tx ${result.txHash}.`);
+    return NextResponse.json({ success: true, requestId, ...result }, { status: 200 });
   } catch (error) {
-    console.error('❌ შეცდომა:', error);
-    return NextResponse.json({ success: false, details: String(error) }, { status: 500 });
+    const status = error instanceof SheetsIngestionError ? error.status : 500;
+    const stage = error instanceof SheetsIngestionError ? error.stage : 'INGESTION';
+    const outcome = error instanceof SheetsIngestionError ? error.outcome : 'FAILED';
+    const message = error instanceof Error
+      ? `${error.name}: ${error.message}`.slice(0, 500)
+      : 'Unknown ingestion failure.';
+    const responseMessage = error instanceof SheetsIngestionError
+      ? error.message
+      : 'Unexpected ingestion failure. Check the request ID in integration logs.';
+
+    console.error(`[${requestId}] Google Sheets ingestion failed`, error);
+    await log(stage, outcome, message);
+
+    return NextResponse.json({ success: false, requestId, error: responseMessage }, { status });
   }
 }

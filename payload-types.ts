@@ -69,6 +69,12 @@ export interface Config {
   collections: {
     users: User;
     media: Media;
+    students: Student;
+    skills: Skill;
+    'verified-skills': VerifiedSkill;
+    passports: Passport;
+    'passport-versions': PassportVersion;
+    'integration-logs': IntegrationLog;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -78,13 +84,19 @@ export interface Config {
   collectionsSelect: {
     users: UsersSelect<false> | UsersSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
+    students: StudentsSelect<false> | StudentsSelect<true>;
+    skills: SkillsSelect<false> | SkillsSelect<true>;
+    'verified-skills': VerifiedSkillsSelect<false> | VerifiedSkillsSelect<true>;
+    passports: PassportsSelect<false> | PassportsSelect<true>;
+    'passport-versions': PassportVersionsSelect<false> | PassportVersionsSelect<true>;
+    'integration-logs': IntegrationLogsSelect<false> | IntegrationLogsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
     'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
   };
   db: {
-    defaultIDType: string;
+    defaultIDType: number;
   };
   fallbackLocale: null;
   globals: {};
@@ -122,7 +134,7 @@ export interface UserAuthOperations {
  * via the `definition` "users".
  */
 export interface User {
-  id: string;
+  id: number;
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -130,6 +142,7 @@ export interface User {
   resetPasswordExpiration?: string | null;
   salt?: string | null;
   hash?: string | null;
+  resetPasswordRequestedAt?: string | null;
   loginAttempts?: number | null;
   lockUntil?: string | null;
   sessions?:
@@ -147,7 +160,7 @@ export interface User {
  * via the `definition` "media".
  */
 export interface Media {
-  id: string;
+  id: number;
   alt: string;
   updatedAt: string;
   createdAt: string;
@@ -163,10 +176,125 @@ export interface Media {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "students".
+ */
+export interface Student {
+  id: number;
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "skills".
+ */
+export interface Skill {
+  id: number;
+  skillCode: string;
+  name: string;
+  category?: string | null;
+  description?: string | null;
+  badgeId: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "verified-skills".
+ */
+export interface VerifiedSkill {
+  id: number;
+  recordId: string;
+  student: number | Student;
+  skill: number | Skill;
+  earnedAt: string;
+  status: 'CONFIRMED' | 'PENDING' | 'REJECTED';
+  processingStatus: 'QUEUED' | 'SKIPPED' | 'PROCESSING' | 'PROCESSED' | 'FAILED';
+  processingError?: string | null;
+  processingStartedAt?: string | null;
+  processedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "passports".
+ */
+export interface Passport {
+  id: number;
+  studentId: string;
+  email?: string | null;
+  acquiredSkills?:
+    | {
+        skillId: string;
+        skillName: string;
+        dateEarned: string;
+        id?: string | null;
+      }[]
+    | null;
+  passportId?: string | null;
+  studentRecord?: (number | null) | Student;
+  firstName: string;
+  lastName: string;
+  firstIssuedAt?: string | null;
+  latestVersion?: (number | null) | PassportVersion;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "passport-versions".
+ */
+export interface PassportVersion {
+  id: number;
+  passport: number | Passport;
+  version: number;
+  sourceRecordId: string;
+  verificationId: string;
+  documentHash: string;
+  issuanceStatus: 'PREPARED' | 'FAILED' | 'ISSUED';
+  skillsSnapshot?:
+    | {
+        recordId: string;
+        skillCode: string;
+        skillName: string;
+        badgeId: string;
+        earnedAt: string;
+        description?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  issuerAddress: string;
+  transactionHash?: string | null;
+  issuedAt: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "integration-logs".
+ */
+export interface IntegrationLog {
+  id: number;
+  requestId: string;
+  source: 'GOOGLE_SHEETS';
+  recordId?: string | null;
+  stage: 'AUTHENTICATION' | 'VALIDATION' | 'LOOKUP' | 'INGESTION';
+  outcome: 'ACCEPTED' | 'DUPLICATE' | 'SKIPPED' | 'REJECTED' | 'FAILED';
+  message: string;
+  loggedAt: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
-  id: string;
+  id: number;
   key: string;
   data:
     | {
@@ -183,20 +311,44 @@ export interface PayloadKv {
  * via the `definition` "payload-locked-documents".
  */
 export interface PayloadLockedDocument {
-  id: string;
+  id: number;
   document?:
     | ({
         relationTo: 'users';
-        value: string | User;
+        value: number | User;
       } | null)
     | ({
         relationTo: 'media';
-        value: string | Media;
+        value: number | Media;
+      } | null)
+    | ({
+        relationTo: 'students';
+        value: number | Student;
+      } | null)
+    | ({
+        relationTo: 'skills';
+        value: number | Skill;
+      } | null)
+    | ({
+        relationTo: 'verified-skills';
+        value: number | VerifiedSkill;
+      } | null)
+    | ({
+        relationTo: 'passports';
+        value: number | Passport;
+      } | null)
+    | ({
+        relationTo: 'passport-versions';
+        value: number | PassportVersion;
+      } | null)
+    | ({
+        relationTo: 'integration-logs';
+        value: number | IntegrationLog;
       } | null);
   globalSlug?: string | null;
   user: {
     relationTo: 'users';
-    value: string | User;
+    value: number | User;
   };
   updatedAt: string;
   createdAt: string;
@@ -206,10 +358,10 @@ export interface PayloadLockedDocument {
  * via the `definition` "payload-preferences".
  */
 export interface PayloadPreference {
-  id: string;
+  id: number;
   user: {
     relationTo: 'users';
-    value: string | User;
+    value: number | User;
   };
   key?: string | null;
   value?:
@@ -229,7 +381,7 @@ export interface PayloadPreference {
  * via the `definition` "payload-migrations".
  */
 export interface PayloadMigration {
-  id: string;
+  id: number;
   name?: string | null;
   batch?: number | null;
   updatedAt: string;
@@ -247,6 +399,7 @@ export interface UsersSelect<T extends boolean = true> {
   resetPasswordExpiration?: T;
   salt?: T;
   hash?: T;
+  resetPasswordRequestedAt?: T;
   loginAttempts?: T;
   lockUntil?: T;
   sessions?:
@@ -274,6 +427,115 @@ export interface MediaSelect<T extends boolean = true> {
   height?: T;
   focalX?: T;
   focalY?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "students_select".
+ */
+export interface StudentsSelect<T extends boolean = true> {
+  studentId?: T;
+  firstName?: T;
+  lastName?: T;
+  email?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "skills_select".
+ */
+export interface SkillsSelect<T extends boolean = true> {
+  skillCode?: T;
+  name?: T;
+  category?: T;
+  description?: T;
+  badgeId?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "verified-skills_select".
+ */
+export interface VerifiedSkillsSelect<T extends boolean = true> {
+  recordId?: T;
+  student?: T;
+  skill?: T;
+  earnedAt?: T;
+  status?: T;
+  processingStatus?: T;
+  processingError?: T;
+  processingStartedAt?: T;
+  processedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "passports_select".
+ */
+export interface PassportsSelect<T extends boolean = true> {
+  studentId?: T;
+  email?: T;
+  acquiredSkills?:
+    | T
+    | {
+        skillId?: T;
+        skillName?: T;
+        dateEarned?: T;
+        id?: T;
+      };
+  passportId?: T;
+  studentRecord?: T;
+  firstName?: T;
+  lastName?: T;
+  firstIssuedAt?: T;
+  latestVersion?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "passport-versions_select".
+ */
+export interface PassportVersionsSelect<T extends boolean = true> {
+  passport?: T;
+  version?: T;
+  sourceRecordId?: T;
+  verificationId?: T;
+  documentHash?: T;
+  issuanceStatus?: T;
+  skillsSnapshot?:
+    | T
+    | {
+        recordId?: T;
+        skillCode?: T;
+        skillName?: T;
+        badgeId?: T;
+        earnedAt?: T;
+        description?: T;
+        id?: T;
+      };
+  issuerAddress?: T;
+  transactionHash?: T;
+  issuedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "integration-logs_select".
+ */
+export interface IntegrationLogsSelect<T extends boolean = true> {
+  requestId?: T;
+  source?: T;
+  recordId?: T;
+  stage?: T;
+  outcome?: T;
+  message?: T;
+  loggedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

@@ -12,5 +12,19 @@
     "wasm": false,
     "artifactsDirectory": "C:\\Users\\White Boss\\Desktop\\AI-Passport\\btu-ai-passport\\artifacts",
     "emitsTypeDeclarations": true
+  },
+  "/home/vako/Desktop/projects/btu-ai-passport/contracts/PassportVerifier.sol": {
+    "jobHash": "solc-0_8_24-7c7a57b49bd8ce6e3a7b21c74645d50b8b76973b",
+    "isolated": false,
+    "compilerType": "solc",
+    "artifactPaths": [
+      "/home/vako/Desktop/projects/btu-ai-passport/artifacts/contracts/PassportVerifier.sol/PassportVerifier.json"
+    ],
+    "buildInfoPath": "/home/vako/Desktop/projects/btu-ai-passport/artifacts/build-info/solc-0_8_24-7c7a57b49bd8ce6e3a7b21c74645d50b8b76973b.json",
+    "buildInfoOutputPath": "/home/vako/Desktop/projects/btu-ai-passport/artifacts/build-info/solc-0_8_24-7c7a57b49bd8ce6e3a7b21c74645d50b8b76973b.output.json",
+    "typeFilePath": "/home/vako/Desktop/projects/btu-ai-passport/artifacts/contracts/PassportVerifier.sol/artifacts.d.ts",
+    "wasm": false,
+    "artifactsDirectory": "/home/vako/Desktop/projects/btu-ai-passport/artifacts",
+    "emitsTypeDeclarations": true
   }
 }

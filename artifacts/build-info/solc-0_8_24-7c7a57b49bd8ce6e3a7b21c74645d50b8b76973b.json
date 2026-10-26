@@ -1,0 +1,42 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_24-7c7a57b49bd8ce6e3a7b21c74645d50b8b76973b",
+  "solcVersion": "0.8.24",
+  "solcLongVersion": "0.8.24+commit.e11b9ed9",
+  "compilerType": "solc",
+  "userSourceNameMap": {
+    "contracts/PassportVerifier.sol": "project/contracts/PassportVerifier.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "shanghai",
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode.linkReferences",
+            "evm.bytecode.object",
+            "evm.bytecode.opcodes",
+            "evm.bytecode.sourceMap",
+            "evm.deployedBytecode.immutableReferences",
+            "evm.deployedBytecode.linkReferences",
+            "evm.deployedBytecode.object",
+            "evm.deployedBytecode.opcodes",
+            "evm.deployedBytecode.sourceMap",
+            "evm.methodIdentifiers"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/PassportVerifier.sol": {
+        "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract PassportVerifier {\n    address public owner;\n\n    struct PassportRecord {\n        string passportId;\n        string verificationId;\n        bytes32 docHash;\n        uint256 version;\n        uint256 timestamp;\n        bool isLatest;\n    }\n\n    mapping(string => PassportRecord) public recordsByVerificationId;\n\n    event PassportRegistered(string passportId, string verificationId, bytes32 docHash, uint256 version);\n\n    modifier onlyOwner() {\n        require(msg.sender == owner, \"Only BTU can register passports\");\n        _;\n    }\n\n    constructor() {\n        owner = msg.sender;\n    }\n\n    function registerPassport(\n        string memory _passportId,\n        string memory _verificationId,\n        bytes32 _docHash,\n        uint256 _version,\n        string memory _previousVerificationId\n    ) external onlyOwner {\n        require(bytes(_passportId).length > 0, \"Passport ID is required\");\n        require(bytes(_verificationId).length > 0, \"Verification ID is required\");\n        require(_docHash != bytes32(0), \"Document hash is required\");\n\n        PassportRecord storage existing = recordsByVerificationId[_verificationId];\n        if (existing.timestamp > 0) {\n            require(\n                keccak256(bytes(existing.passportId)) == keccak256(bytes(_passportId)) &&\n                    existing.docHash == _docHash &&\n                    existing.version == _version,\n                \"Verification ID conflicts with existing record\"\n            );\n            return;\n        }\n\n        if (bytes(_previousVerificationId).length > 0) {\n            PassportRecord storage previous = recordsByVerificationId[_previousVerificationId];\n            require(previous.timestamp > 0, \"Previous version does not exist\");\n            require(previous.isLatest, \"Previous version is not latest\");\n            require(\n                keccak256(bytes(previous.passportId)) == keccak256(bytes(_passportId)),\n                \"Previous version belongs to another passport\"\n            );\n            require(_version == previous.version + 1, \"Version must increment by one\");\n            previous.isLatest = false;\n        } else {\n            require(_version == 1, \"Initial version must be one\");\n        }\n\n        recordsByVerificationId[_verificationId] = PassportRecord({\n            passportId: _passportId,\n            verificationId: _verificationId,\n            docHash: _docHash,\n            version: _version,\n            timestamp: block.timestamp,\n            isLatest: true\n        });\n\n        emit PassportRegistered(_passportId, _verificationId, _docHash, _version);\n    }\n\n    function getPassport(string memory _verificationId) external view returns (PassportRecord memory) {\n        return recordsByVerificationId[_verificationId];\n    }\n}"
+      }
+    }
+  }
+}

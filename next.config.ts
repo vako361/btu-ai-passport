@@ -1,20 +1,18 @@
-import type { NextConfig } from "next";
-import { withPayload } from "@payloadcms/next/withPayload";
+import type { NextConfig } from 'next';
 
-const nextConfig: NextConfig = {
-  // Webhook-ის გვირაბის ნებართვა ახალი ლინკით
- 
-  allowedDevOrigins: ["1cbf9addba4270.lhr.life"],
+const nextConfig: NextConfig = {};
 
-  // Turbopack-ის სტილების კონფიგურაცია
-  turbopack: {
-    rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
-      },
-    },
-  },
-};
+nextConfig.allowedDevOrigins = [
+	'192.168.100.199',
+	'1cbf9addba4270.lhr.life',
+];
 
-export default withPayload(nextConfig);
+nextConfig.serverExternalPackages = [
+	'@payloadcms/db-postgres',
+	'@payloadcms/drizzle',
+	'drizzle-kit',
+	'esbuild',
+	'@esbuild/linux-x64',
+];
+
+export default nextConfig;

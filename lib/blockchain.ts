@@ -8,8 +8,14 @@ const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
 // კონტრაქტის ინტერფეისი (ABI)
 const contractABI = [
   "function registerPassport(string _passportId, string _verificationId, bytes32 _docHash, uint256 _version, string _previousVerificationId) external",
-  "function getPassport(string _verificationId) external view returns (tuple(string passportId, string verificationId, bytes32 docHash, uint256 version, uint256 timestamp, bool isLatest))"
+  "function getPassport(string _verificationId) external view returns (tuple(string passportId, string verificationId, bytes32 docHash, uint256 version, uint256 timestamp, bool isLatest))",
+  'function owner() view returns (address)',
 ];
+
+export function getIssuerAddress() {
+  if (!PRIVATE_KEY) throw new Error("გაკლია ISSUER_PRIVATE_KEY");
+  return new ethers.Wallet(PRIVATE_KEY).address;
+}
 
 // ფუნქცია, რომელიც ბლოკჩეინში ჩაწერს მონაცემებს
 export async function registerPassportOnChain(
@@ -43,29 +49,40 @@ export async function registerPassportOnChain(
   return receipt.hash;
 }
 
-// დოკუმენტის შემოწმება
-export async function verifyDocumentOnChain(verificationId: string) {
-  const provider = new ethers.JsonRpcProvider(process.env.BLOCKCHAIN_RPC_URL);
-  const contract = new ethers.Contract(
-    process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as string,
-    PassportVerifierABI.abi,
-    provider
-  );
+export type IssuerAuthenticity = 'VERIFIED' | 'UNVERIFIED' | 'NOT_CONFIGURED';
 
-  try {
-    const result = await contract.getPassport(verificationId); 
-    const isValid = result && Number(result.version) > 0;
-    
-    return {
-      isValid,
-      passportId: result.passportId,
-      verificationId: result.verificationId,
-      docHash: result.docHash, // 👈 ეს დაემატა შესადარებლად
-      version: result.version.toString(),
-      isLatest: result.isLatest
+export type PublicPassportRecord =
+  | { recordExists: false }
+  | {
+      recordExists: true;
+      documentHash: string;
+      version: number;
+      isLatest: boolean;
+      issuerAuthenticity: IssuerAuthenticity;
     };
-  } catch (error) {
-    console.error("❌ გადამოწმება ვერ მოხერხდა:", error);
-    return { isValid: false, error: "დოკუმენტი არ მოიძებნა ან გაყალბებულია" };
-  }
+
+export async function verifyDocumentOnChain(verificationId: string): Promise<PublicPassportRecord> {
+  if (!RPC_URL || !CONTRACT_ADDRESS) throw new Error('Blockchain verifier is not configured.');
+
+  const provider = new ethers.JsonRpcProvider(RPC_URL);
+  const contract = new ethers.Contract(CONTRACT_ADDRESS, PassportVerifierABI.abi, provider);
+  const result = await contract.getPassport(verificationId);
+  const version = Number(result.version);
+  if (!Number.isSafeInteger(version) || version <= 0) return { recordExists: false };
+
+  const expectedIssuer = process.env.BTU_ISSUER_ADDRESS;
+  const contractOwner = await contract.owner();
+  const issuerAuthenticity: IssuerAuthenticity = !expectedIssuer
+    ? 'NOT_CONFIGURED'
+    : String(contractOwner).toLowerCase() === expectedIssuer.toLowerCase()
+      ? 'VERIFIED'
+      : 'UNVERIFIED';
+
+  return {
+    recordExists: true,
+    documentHash: String(result.docHash),
+    version,
+    isLatest: Boolean(result.isLatest),
+    issuerAuthenticity,
+  };
 }
