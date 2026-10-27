@@ -1,16 +1,21 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation'; // ⚠️ დამატებულია
 
 export function StudentLogoutButton() {
   const [loading, setLoading] = useState(false);
+  const router = useRouter(); // ⚠️ ინიციალიზაცია
 
   async function handleLogout() {
     setLoading(true);
     try {
       await fetch('/api/student/logout', { method: 'POST' });
-      // ქუქის წაშლის შემდეგ გვერდის გადატვირთვა
-      window.location.href = '/student';
+      
+      // ქუქის წაშლის შემდეგ სწორი ნავიგაცია
+      router.push('/student');
+      router.refresh(); // ⚠️ დაგეხმარება, რომ სერვერულმა კომპონენტებმა წაშლილი ქუქი დაინახონ
+      
     } catch (error) {
       console.error('Logout error:', error);
       setLoading(false);
