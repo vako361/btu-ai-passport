@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { headers } from 'next/headers';
+import { cookies } from 'next/headers';
 import { getPayload } from 'payload';
 import config from '@payload-config';
 import { StudentLoginForm } from './StudentLoginForm';
@@ -8,10 +8,21 @@ import { StudentLogoutButton } from './StudentLogoutButton';
 export const dynamic = 'force-dynamic';
 
 export default async function StudentPortalPage() {
-  const payload = await getPayload({ config });
-  const { user } = await payload.auth({ headers: await headers() });
-  const email = typeof user?.email === 'string' ? user.email.toLowerCase() : null;
+  // 1. ვკითხულობთ ჩვენ მიერ ავტორიზაციისას შექმნილ student_session ქუქის
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get('student_session');
+  
+  let email: string | null = null;
+  if (sessionCookie?.value) {
+    try {
+      const parsed = JSON.parse(sessionCookie.value);
+      email = typeof parsed.email === 'string' ? parsed.email.toLowerCase() : null;
+    } catch {
+      email = null;
+    }
+  }
 
+  // 2. თუ ქუქი არ არის, გამოჩნდება შესვლის ფორმა
   if (!email) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-1 items-center justify-center px-6 py-12">
@@ -25,25 +36,28 @@ export default async function StudentPortalPage() {
     );
   }
 
+  // 3. თუ ქუქი არსებობს, მოგვაქვს მონაცემები
+  const payload = await getPayload({ config });
+
   const students = await payload.find({
     collection: 'students',
     where: { email: { equals: email } },
-    limit: 2,
+    limit: 1,
     depth: 0,
     overrideAccess: true,
   });
-  const student = students.docs.length === 1 ? students.docs[0] : null;
+  const student = students.docs[0] || null;
 
   const passports = student
     ? await payload.find({
         collection: 'passports',
         where: { studentRecord: { equals: student.id } },
-        limit: 2,
+        limit: 1,
         depth: 1,
         overrideAccess: true,
       })
     : null;
-  const passport = passports?.docs.length === 1 ? passports.docs[0] : null;
+  const passport = passports?.docs[0] || null;
   const latestVersion = passport?.latestVersion && typeof passport.latestVersion === 'object'
     ? passport.latestVersion
     : null;

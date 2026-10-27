@@ -81,15 +81,50 @@ export async function processSheetsVerifiedSkill(
     }),
   ]);
 
-  if (studentResult.docs.length !== 1) {
-    throw new SheetsIngestionError('Student ID was not found or is ambiguous.', 422, 'LOOKUP', 'REJECTED');
-  }
-  if (skillResult.docs.length !== 1) {
-    throw new SheetsIngestionError('Skill Code was not found or is ambiguous.', 422, 'LOOKUP', 'REJECTED');
+  // ავტომატური სტუდენტის შექმნა (ESLint-ის any გაფრთხილების გარეშე)
+  let student = studentResult.docs[0];
+  if (!student) {
+    const rawEvent = event as unknown as Record<string, unknown>;
+    const firstName = typeof rawEvent.firstName === 'string' && rawEvent.firstName ? rawEvent.firstName : 'New';
+    const lastName = typeof rawEvent.lastName === 'string' && rawEvent.lastName ? rawEvent.lastName : 'Student';
+    const email = typeof rawEvent.email === 'string' && rawEvent.email ? rawEvent.email : `${event.studentId.toLowerCase()}@student.btu.edu.ge`;
+
+    student = await payload.create({
+      collection: 'students',
+      overrideAccess: true,
+      draft: false,
+      data: {
+        studentId: event.studentId,
+        firstName,
+        lastName,
+        email,
+      },
+    });
+  } else if (studentResult.docs.length > 1) {
+    throw new SheetsIngestionError('Student ID is ambiguous.', 422, 'LOOKUP', 'REJECTED');
   }
 
-  const student = studentResult.docs[0];
-  const skill = skillResult.docs[0];
+  // ავტომატური უნარის (Skill) შექმნა (ESLint-ის any გაფრთხილების გარეშე)
+  let skill = skillResult.docs[0];
+  if (!skill) {
+    const rawEvent = event as unknown as Record<string, unknown>;
+    const skillName = typeof rawEvent.skillName === 'string' && rawEvent.skillName ? rawEvent.skillName : `Auto-Generated Skill ${event.skillCode}`;
+
+    skill = await payload.create({
+      collection: 'skills',
+      overrideAccess: true,
+      draft: false,
+      data: {
+        skillCode: event.skillCode,
+        name: skillName,
+        badgeId: `BDG-${event.skillCode}`,
+        description: `Automatically created via Webhook for code ${event.skillCode}`,
+      },
+    });
+  } else if (skillResult.docs.length > 1) {
+    throw new SheetsIngestionError('Skill Code is ambiguous.', 422, 'LOOKUP', 'REJECTED');
+  }
+
   const existing = existingResult.docs[0];
 
   if (existing) {

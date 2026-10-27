@@ -1,12 +1,10 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
 
 export function StudentLoginForm() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [studentId, setStudentId] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -16,14 +14,23 @@ export function StudentLoginForm() {
     setSubmitting(true);
 
     try {
-      const response = await fetch('/api/users/login', {
+      // 🚀 გასწორებულია: /api/users/login -> /api/student/login
+      const response = await fetch('/api/student/login', {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          studentId: studentId.trim(),
+        }),
       });
-      if (!response.ok) throw new Error('შესვლა ვერ მოხერხდა. შეამოწმეთ მონაცემები ან მიმართეთ BTU ადმინისტრატორს.');
-      router.refresh();
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'შესვლა ვერ მოხერხდა. შეამოწმეთ ელფოსტა და სტუდენტის ID.');
+      }
+
+      window.location.href = '/student';
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'შესვლა ვერ მოხერხდა.');
     } finally {
@@ -32,41 +39,51 @@ export function StudentLoginForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4">
+    <form onSubmit={handleSubmit} className="w-full space-y-5">
       <div>
-        <label htmlFor="student-email" className="mb-2 block text-sm font-semibold text-gray-600">BTU ელფოსტა</label>
+        <label htmlFor="student-email" className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-700">
+          BTU ელფოსტა
+        </label>
         <input
           id="student-email"
           type="email"
-          autoComplete="username"
           required
           value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          placeholder="name@btu.edu.ge"
-          className="h-12 w-full rounded-lg border border-gray-300 bg-white px-4 text-base outline-none focus:border-[#FE017E] focus:ring-1 focus:ring-[#FE017E]"
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="btu-t-0014@student.btu.edu.ge"
+          className="h-12 w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 text-sm font-medium text-gray-900 outline-none focus:border-[#FE017E]"
           disabled={submitting}
         />
       </div>
+
       <div>
-        <label htmlFor="student-password" className="mb-2 block text-sm font-semibold text-gray-600">პაროლი</label>
+        <label htmlFor="student-id" className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-700">
+          სტუდენტის ID (ნომერი)
+        </label>
         <input
-          id="student-password"
-          type="password"
-          autoComplete="current-password"
+          id="student-id"
+          type="text"
           required
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          className="h-12 w-full rounded-lg border border-gray-300 bg-white px-4 text-base outline-none focus:border-[#FE017E] focus:ring-1 focus:ring-[#FE017E]"
+          value={studentId}
+          onChange={(e) => setStudentId(e.target.value)}
+          placeholder="BTU-T-0014"
+          className="h-12 w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 text-sm font-medium text-gray-900 outline-none focus:border-[#FE017E]"
           disabled={submitting}
         />
       </div>
-      {error && <p role="alert" className="text-sm font-semibold text-red-700">{error}</p>}
+
+      {error && (
+        <div className="rounded-xl bg-red-50 p-3 text-xs font-semibold text-red-600 border border-red-100">
+          {error}
+        </div>
+      )}
+
       <button
         type="submit"
-        disabled={submitting || !email || !password}
-        className="h-12 w-full rounded-lg bg-[#FE017E] px-5 font-bold text-white transition-colors hover:bg-[#d6006a] disabled:cursor-not-allowed disabled:bg-gray-400"
+        disabled={submitting || !email || !studentId}
+        className="h-12 w-full rounded-xl bg-[#FE017E] text-sm font-bold text-white transition-all hover:bg-[#d6006a] disabled:opacity-50"
       >
-        {submitting ? 'მოწმდება...' : 'შესვლა'}
+        {submitting ? 'მოწმდება...' : 'პორტალზე შესვლა →'}
       </button>
     </form>
   );
