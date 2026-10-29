@@ -72,7 +72,7 @@ export default buildConfig({
     IntegrationLogs,
   ],
   editor: lexicalEditor(),
-  secret: process.env.PAYLOAD_SECRET || "default-secret-key-for-payload",
+  secret: process.env.PAYLOAD_SECRET || (process.env.NODE_ENV === "production" ? "" : "dev-only-payload-secret"),
   typescript: {
     outputFile: path.resolve(dirname, "payload-types.ts"),
   },

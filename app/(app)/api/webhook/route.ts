@@ -8,6 +8,7 @@ import { parseSheetsVerifiedSkillEvent } from '@/lib/passportTypes';
 import { verifySheetsWebhookSignature } from '@/lib/sheetsWebhook';
 
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 const MAX_BODY_BYTES = 16 * 1024;
 const TRANSIENT_DATABASE_CODES = new Set([
@@ -111,8 +112,9 @@ export async function POST(request: Request) {
     const status = error instanceof SheetsIngestionError ? error.status : transientDatabaseFailure ? 503 : 500;
     const stage = error instanceof SheetsIngestionError ? error.stage : 'INGESTION';
     const outcome = error instanceof SheetsIngestionError ? error.outcome : 'FAILED';
+    const cause = error instanceof Error && error.cause instanceof Error ? ` Cause: ${error.cause.message}` : '';
     const message = error instanceof Error
-      ? `${error.name}: ${error.message}`.slice(0, 500)
+      ? `${error.name}: ${error.message}${cause}`.slice(0, 500)
       : 'Unknown ingestion failure.';
     const responseMessage = error instanceof SheetsIngestionError
       ? error.message

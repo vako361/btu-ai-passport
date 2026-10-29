@@ -25,4 +25,9 @@ nextConfig.serverExternalPackages = [
     '@esbuild/linux-x64',
 ];
 
+// The PDF generator reads these files by computed path, which file tracing cannot see.
+nextConfig.outputFileTracingIncludes = {
+    '/api/webhook': ['./assets/**/*'],
+};
+
 export default nextConfig;

@@ -1,13 +1,19 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 
 const FILE_MAGIC = Buffer.from('BTUPDF01');
 
 function storageDirectory() {
   const configuredDirectory = process.env.PASSPORT_STORAGE_DIR;
-  if (!configuredDirectory) return path.join(process.cwd(), 'storage', 'passports');
-  return path.resolve(/* turbopackIgnore: true */ configuredDirectory);
+  // Vercel's filesystem is read-only except the temp dir.
+  if (!configuredDirectory) {
+    return process.env.VERCEL ? path.join(os.tmpdir(), 'passports') : path.join(process.cwd(), 'storage', 'passports');
+  }
+  const resolved = path.resolve(/* turbopackIgnore: true */ configuredDirectory);
+  // The temp dir itself is not ours to chmod, so keep files in a subfolder.
+  return resolved === path.resolve(os.tmpdir()) ? path.join(resolved, 'passports') : resolved;
 }
 
 function encryptionKey() {

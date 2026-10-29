@@ -15,8 +15,9 @@ export class SheetsIngestionError extends Error {
     readonly status: number,
     readonly stage: 'LOOKUP' | 'INGESTION',
     readonly outcome: 'REJECTED' | 'FAILED',
+    cause?: unknown,
   ) {
-    super(message);
+    super(message, cause === undefined ? undefined : { cause });
   }
 }
 
@@ -245,7 +246,10 @@ export async function processSheetsVerifiedSkill(
   try {
         return await issuePassportVersion(payload, issuanceEvent, resolvedStudent, skill, verifiedSkill.id);
   } catch (error) {
-    console.error("🔥 PDF გენერირების ნამდვილი ერორი:", error);
+    console.error(
+      `Passport issuance failed for record ${issuanceEvent.recordId}:`,
+      error instanceof Error ? error.stack ?? error.message : error,
+    );
     await payload.update({
       collection: 'verified-skills',
       id: verifiedSkill.id,
@@ -258,7 +262,13 @@ export async function processSheetsVerifiedSkill(
           : 'Unknown processing error',
       },
     });
-    throw new SheetsIngestionError('Passport issuance failed; see the integration log for this request.', 500, 'INGESTION', 'FAILED');
+    throw new SheetsIngestionError(
+      'Passport issuance failed; see the integration log for this request.',
+      500,
+      'INGESTION',
+      'FAILED',
+      error,
+    );
   }
 }
 

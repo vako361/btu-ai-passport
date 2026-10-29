@@ -112,6 +112,26 @@ async function checkOfficialBadges() {
   }
 }
 
+async function checkSystemTempStorage(pdf: Buffer) {
+  const previousDir = process.env.PASSPORT_STORAGE_DIR;
+  const previousKey = process.env.PASSPORT_STORAGE_KEY;
+  const verificationId = 'VER-TMPDIRCHECK00000000001';
+  const storedFile = path.join(os.tmpdir(), 'passports', `${verificationId}.pdf.enc`);
+  process.env.PASSPORT_STORAGE_DIR = os.tmpdir();
+  process.env.PASSPORT_STORAGE_KEY = 'ab'.repeat(32);
+  try {
+    const hash = `0x${createHash('sha256').update(pdf).digest('hex')}`;
+    await storePassportPdf(verificationId, pdf, hash);
+    return (await readPassportPdf(verificationId, hash)).equals(pdf) && (await readFile(storedFile)).length > 0;
+  } finally {
+    await rm(storedFile, { force: true });
+    if (previousDir === undefined) delete process.env.PASSPORT_STORAGE_DIR;
+    else process.env.PASSPORT_STORAGE_DIR = previousDir;
+    if (previousKey === undefined) delete process.env.PASSPORT_STORAGE_KEY;
+    else process.env.PASSPORT_STORAGE_KEY = previousKey;
+  }
+}
+
 async function main() {
   const first = await generatePassportPDF(student, skills, VERIFICATION_ID);
   const second = await generatePassportPDF(student, skills, VERIFICATION_ID);
@@ -152,6 +172,7 @@ async function main() {
       detail: `first=${creationDate?.toISOString()} second=${secondCreationDate?.toISOString()}`,
     },
     { name: 'stored PDF bytes match issued bytes', ok: storedBytesMatch, detail: `bytes=${first.length}` },
+    { name: 'storage works when PASSPORT_STORAGE_DIR is the system temp dir', ok: await checkSystemTempStorage(first), detail: 'tmpdir/passports' },
     { name: 'official badges only, with cached aliases', ok: await checkOfficialBadges(), detail: '3 official PNGs' },
   ];
 

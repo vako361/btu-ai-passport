@@ -25,13 +25,16 @@ export async function registerPassportOnChain(
   version: number,
   prevVerificationId: string = ""
 ) {
-  if (!RPC_URL || !PRIVATE_KEY || !CONTRACT_ADDRESS) {
-    throw new Error("გაკლია .env ცვლადები");
-  }
+  const missing = [
+    ['BLOCKCHAIN_RPC_URL', RPC_URL],
+    ['ISSUER_PRIVATE_KEY', PRIVATE_KEY],
+    ['NEXT_PUBLIC_CONTRACT_ADDRESS', CONTRACT_ADDRESS],
+  ].filter(([, value]) => !value).map(([name]) => name);
+  if (missing.length) throw new Error(`Missing environment variables: ${missing.join(', ')}`);
 
   const provider = new ethers.JsonRpcProvider(RPC_URL);
-  const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
-  const contract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, wallet);
+  const wallet = new ethers.Wallet(PRIVATE_KEY!, provider);
+  const contract = new ethers.Contract(CONTRACT_ADDRESS!, contractABI, wallet);
 
   // დარწმუნება რომ ჰეში 0x-ით იწყება
   const formattedHash = docHashHex.startsWith('0x') ? docHashHex : `0x${docHashHex}`;
