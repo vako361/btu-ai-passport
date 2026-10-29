@@ -18,50 +18,61 @@ const filename = fileURLToPath(import.meta.url);
 const dirname = path.dirname(filename);
 
 function getDatabaseConnectionString() {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) return "";
+  // ამოწმებს ცვლადის სამივე შესაძლო სახელს
+  const connectionString =
+    process.env.DATABASE_URL ||
+    process.env.DATABASE_URI ||
+    process.env.POSTGRES_URL;
 
-  try {
-    const databaseUrl = new URL(connectionString);
-    const sslMode = databaseUrl.searchParams.get("sslmode")?.toLowerCase();
-    if (sslMode && ["prefer", "require", "verify-ca"].includes(sslMode)) {
-      databaseUrl.searchParams.set("sslmode", "verify-full");
-    }
-    return databaseUrl.toString();
-  } catch {
-    return connectionString;
+  if (!connectionString) {
+    console.error("❌ ERROR: No database connection string found in environment variables!");
+    return "";
   }
+
+  return connectionString;
 }
 
+const appUrl =
+  process.env.PAYLOAD_PUBLIC_SERVER_URL ||
+  process.env.NEXT_PUBLIC_APP_URL ||
+  "https://btu-ai-passport-gamma.vercel.app";
+
 export default buildConfig({
-  // ⚠️ serverURL უზრუნველყოფს ადმინ პანელის რესურსების სწორად ჩატვირთვას IP/დომენიდან
-  serverURL: process.env.PAYLOAD_PUBLIC_SERVER_URL || 'http://192.168.100.5:3000',
+  serverURL: appUrl,
   admin: {
     user: Users.slug,
     importMap: {
       baseDir: path.resolve(dirname),
     },
   },
-  // ⚠️ CORS და CSRF კონფიგურაცია გარე ბრაუზერებისა და IP/ტუნელებისთვის
   cors: [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    'http://192.168.100.199:3000',
-    'http://192.168.100.5:3000',
-    'https://*.ngrok-free.dev',
-    'https://*.lhr.life',
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://btu-ai-passport-gamma.vercel.app",
+    "https://*.vercel.app",
+    "https://*.ngrok-free.dev",
+    "https://*.lhr.life",
   ],
   csrf: [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    'http://192.168.100.199:3000',
-    'http://192.168.100.5:3000',
-    'https://*.ngrok-free.dev',
-    'https://*.lhr.life',
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://btu-ai-passport-gamma.vercel.app",
+    "https://*.vercel.app",
+    "https://*.ngrok-free.dev",
+    "https://*.lhr.life",
   ],
-  collections: [Users, Media, Students, Skills, VerifiedSkills, Passports, PassportVersions, IntegrationLogs],
+  collections: [
+    Users,
+    Media,
+    Students,
+    Skills,
+    VerifiedSkills,
+    Passports,
+    PassportVersions,
+    IntegrationLogs,
+  ],
   editor: lexicalEditor(),
-  secret: process.env.PAYLOAD_SECRET || "",
+  secret: process.env.PAYLOAD_SECRET || "default-secret-key-for-payload",
   typescript: {
     outputFile: path.resolve(dirname, "payload-types.ts"),
   },
