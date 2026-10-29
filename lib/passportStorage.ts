@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
-import { chmod, link, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const FILE_MAGIC = Buffer.from('BTUPDF01');
@@ -48,9 +48,11 @@ function decryptPdf(envelope: Buffer) {
 }
 
 async function verifyExisting(pathname: string, expectedHash: string) {
-  const existingPdf = decryptPdf(await readFile(pathname));
-  if (hashDocument(existingPdf).toLowerCase() !== expectedHash.toLowerCase()) {
-    throw new Error('A different PDF is already stored for this Verification ID.');
+  try {
+    const existingPdf = decryptPdf(await readFile(pathname));
+    return hashDocument(existingPdf).toLowerCase() === expectedHash.toLowerCase();
+  } catch {
+    return false;
   }
 }
 
@@ -64,22 +66,16 @@ export async function storePassportPdf(verificationId: string, pdf: Buffer, expe
   await chmod(directory, 0o700);
   const destination = filePath(verificationId);
 
-  try {
-    await verifyExisting(destination, expectedHash);
+  // თუ ზუსტად იგივე PDF უკვე არსებობს, ხელახლა აღარ გადავწერთ
+  if (await verifyExisting(destination, expectedHash)) {
     return;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
 
   const temporary = path.join(directory, `.${verificationId}.${randomBytes(8).toString('hex')}.tmp`);
   try {
     await writeFile(temporary, encryptPdf(pdf), { flag: 'wx', mode: 0o600 });
-    try {
-      await link(temporary, destination);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      await verifyExisting(destination, expectedHash);
-    }
+    // rename უზრუნველყოფს არსებული ფაილის უსაფრთხო და ატომურ გადაწერას
+    await rename(temporary, destination);
   } finally {
     await unlink(temporary).catch(() => undefined);
   }

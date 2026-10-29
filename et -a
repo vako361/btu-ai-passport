@@ -1,0 +1,14 @@
+ record_id |   stage   |  outcome  |                                              message                                              |         logged_at          
+-----------+-----------+-----------+---------------------------------------------------------------------------------------------------+----------------------------
+ REC-0060  | INGESTION | REJECTED  | Error: Record ID already exists with different source data.                                       | 2026-10-29 20:16:09.389+00
+ REC-0060  | INGESTION | ACCEPTED  | Passport version 1 issued; tx 0xec68e6e762aa4724a143ac931c7fd3776ecd8b127207e3fa36fb4c196689002e. | 2026-10-29 19:56:19.423+00
+ REC-0055  | INGESTION | ACCEPTED  | Passport version 1 issued; tx 0x1bf33263951ad2032092be31361f832209a380efaa66bff54eead71542cb710a. | 2026-10-29 19:45:39.418+00
+ REC-0005  | INGESTION | DUPLICATE | Record ID has already been processed.                                                             | 2026-10-29 19:44:39.719+00
+ REC-0001  | INGESTION | ACCEPTED  | Passport version 1 issued; tx 0x83aa7f59fd11a633c52279be66038009eebff1130a1de92c80fab9c660cad235. | 2026-10-29 19:35:18.984+00
+ REC-0050  | INGESTION | DUPLICATE | Record ID has already been processed.                                                             | 2026-10-29 19:33:32.326+00
+ REC-0050  | INGESTION | DUPLICATE | Record ID has already been processed.                                                             | 2026-10-29 19:33:32.191+00
+ REC-0050  | INGESTION | ACCEPTED  | Passport version 1 issued; tx 0x813c8dd8ba913532bbf0e540dfc304f7b91648490c65f50907761a1f46f25d45. | 2026-10-29 19:24:41.016+00
+ REC-0005  | INGESTION | ACCEPTED  | Passport version 1 issued; tx 0xcef42a9bdb7491f38e0dc879e61f64b4092b4e4bef98c4b98386c080471058d8. | 2026-10-29 19:13:56.071+00
+ REC-0005  | INGESTION | FAILED    | ValidationError: The following field is invalid: recordId                                         | 2026-10-29 19:13:41.371+00
+(10 rows)
+

@@ -3,8 +3,8 @@ import type { Payload } from 'payload';
 import type { Skill, Student } from '../payload-types';
 import { getIssuerAddress } from './blockchain';
 import { generatePassportPDF } from './pdfGenerator';
-import { preparePassportRegistration, registerPassportVersionOnChain } from './passportService';
-import { storePassportPdf } from './passportStorage';
+import { preparePassportRegistration, registerAndFinalizePassportVersion, registerPassportVersionOnChain } from './passportService';
+import { readPassportPdf, storePassportPdf } from './passportStorage';
 import type { PassportInput, SheetsVerifiedSkillEvent } from './passportTypes';
 
 const PROCESSING_LEASE_MS = 10 * 60 * 1000;
@@ -53,6 +53,32 @@ function verificationIdForRecord(recordId: string) {
   return `VER-${createHash('sha256').update(recordId).digest('hex').slice(0, 24).toUpperCase()}`;
 }
 
+function badgeCorrectionRecordId(recordId: string, badgeId: string) {
+  const correctionKey = createHash('sha256')
+    .update(`${recordId}\0${badgeId.trim().toUpperCase()}`)
+    .digest('hex')
+    .slice(0, 32)
+    .toUpperCase();
+  return `BADGE-REISSUE-${correctionKey}`;
+}
+
+async function issuedBadgeIdForRecord(payload: Payload, recordId: string) {
+  const result = await payload.find({
+    collection: 'passport-versions',
+    where: {
+      and: [
+        { 'skillsSnapshot.recordId': { equals: recordId } },
+        { issuanceStatus: { equals: 'ISSUED' } },
+      ],
+    },
+    sort: '-version',
+    limit: 1,
+    depth: 0,
+    overrideAccess: true,
+  });
+  return result.docs[0]?.skillsSnapshot?.find((item) => item.recordId === recordId)?.badgeId;
+}
+
 export async function processSheetsVerifiedSkill(
   payload: Payload,
   event: SheetsVerifiedSkillEvent,
@@ -81,66 +107,78 @@ export async function processSheetsVerifiedSkill(
     }),
   ]);
 
-  // ავტომატური სტუდენტის შექმნა (ESLint-ის any გაფრთხილების გარეშე)
-  let student = studentResult.docs[0];
-  if (!student) {
-    const rawEvent = event as unknown as Record<string, unknown>;
-    const firstName = typeof rawEvent.firstName === 'string' && rawEvent.firstName ? rawEvent.firstName : 'New';
-    const lastName = typeof rawEvent.lastName === 'string' && rawEvent.lastName ? rawEvent.lastName : 'Student';
-    const email = typeof rawEvent.email === 'string' && rawEvent.email ? rawEvent.email : `${event.studentId.toLowerCase()}@student.btu.edu.ge`;
-
-    student = await payload.create({
-      collection: 'students',
-      overrideAccess: true,
-      draft: false,
-      data: {
-        studentId: event.studentId,
-        firstName,
-        lastName,
-        email,
-      },
-    });
-  } else if (studentResult.docs.length > 1) {
+  if (studentResult.docs.length > 1) {
     throw new SheetsIngestionError('Student ID is ambiguous.', 422, 'LOOKUP', 'REJECTED');
   }
-
-  // ავტომატური უნარის (Skill) შექმნა (ESLint-ის any გაფრთხილების გარეშე)
-  let skill = skillResult.docs[0];
-  if (!skill) {
-    const rawEvent = event as unknown as Record<string, unknown>;
-    const skillName = typeof rawEvent.skillName === 'string' && rawEvent.skillName ? rawEvent.skillName : `Auto-Generated Skill ${event.skillCode}`;
-
-    skill = await payload.create({
-      collection: 'skills',
-      overrideAccess: true,
-      draft: false,
-      data: {
-        skillCode: event.skillCode,
-        name: skillName,
-        badgeId: `BDG-${event.skillCode}`,
-        description: `Automatically created via Webhook for code ${event.skillCode}`,
-      },
-    });
-  } else if (skillResult.docs.length > 1) {
+  if (skillResult.docs.length > 1) {
     throw new SheetsIngestionError('Skill Code is ambiguous.', 422, 'LOOKUP', 'REJECTED');
   }
 
+  const student = studentResult.docs[0];
+  if (!student && (!event.firstName?.trim() || !event.lastName?.trim() || !event.email?.trim())) {
+    throw new SheetsIngestionError(
+      'Student not found. Creating one requires firstName, lastName, and email in the Sheets payload.',
+      422,
+      'LOOKUP',
+      'REJECTED',
+    );
+  }
+  if (!skillResult.docs[0] && !event.skillName?.trim()) {
+    throw new SheetsIngestionError(
+      'Skill not found. Creating one requires skillName in the Sheets payload.',
+      422,
+      'LOOKUP',
+      'REJECTED',
+    );
+  }
+
+  const resolvedStudent = student ?? await createStudentFromEvent(payload, event);
+  let skill = skillResult.docs[0] ?? await createSkillFromEvent(payload, event);
+
   const existing = existingResult.docs[0];
+  if (existing) {
+    const changedFields = [
+      relationId(existing.student) !== String(resolvedStudent.id) && 'student',
+      relationId(existing.skill) !== String(skill.id) && 'skill',
+      dateOnly(existing.earnedAt) !== event.earnedAt && 'earnedAt',
+    ].filter(Boolean);
+    if (changedFields.length) {
+      throw new SheetsIngestionError(
+        `Record ID already exists with different source data (${changedFields.join(', ')}); use a new Record ID.`,
+        409,
+        'INGESTION',
+        'REJECTED',
+      );
+    }
+  }
+
+  if (event.badgeId?.trim() && skill.badgeId !== event.badgeId.trim()) {
+    skill = await payload.update({
+      collection: 'skills',
+      id: skill.id,
+      overrideAccess: true,
+      data: { badgeId: event.badgeId.trim() },
+    });
+  }
+
+  let issuanceEvent = event;
 
   if (existing) {
-    const sameSource =
-      relationId(existing.student) === String(student.id) &&
-      relationId(existing.skill) === String(skill.id) &&
-      dateOnly(existing.earnedAt) === event.earnedAt;
-
-    if (!sameSource) {
-      throw new SheetsIngestionError('Record ID already exists with different source data.', 409, 'INGESTION', 'REJECTED');
-    }
     if (existing.processingStatus === 'PROCESSED') {
       if (existing.status !== event.status) {
         throw new SheetsIngestionError('A processed record cannot change status; issue a new Record ID.', 409, 'INGESTION', 'REJECTED');
       }
-      return { kind: 'duplicate', message: 'Record ID has already been processed.' };
+      const requestedBadgeId = event.badgeId?.trim();
+      if (!requestedBadgeId) return { kind: 'duplicate', message: 'Record ID has already been processed.' };
+
+      const issuedBadgeId = await issuedBadgeIdForRecord(payload, event.recordId);
+      if (issuedBadgeId?.trim().toUpperCase() === requestedBadgeId.toUpperCase()) {
+        return { kind: 'duplicate', message: 'Record ID has already been processed.' };
+      }
+      issuanceEvent = {
+        ...event,
+        recordId: badgeCorrectionRecordId(event.recordId, requestedBadgeId),
+      };
     }
     if (existing.processingStatus === 'QUEUED') {
       return { kind: 'duplicate', message: 'Record ID is already being processed.' };
@@ -167,7 +205,7 @@ export async function processSheetsVerifiedSkill(
         overrideAccess: true,
         data: {
           recordId: event.recordId,
-          student: student.id,
+          student: resolvedStudent.id,
           skill: skill.id,
           earnedAt: event.earnedAt,
           status: event.status,
@@ -195,7 +233,7 @@ export async function processSheetsVerifiedSkill(
         overrideAccess: true,
         data: {
           recordId: event.recordId,
-          student: student.id,
+          student: resolvedStudent.id,
           skill: skill.id,
           earnedAt: event.earnedAt,
           status: 'CONFIRMED',
@@ -205,8 +243,9 @@ export async function processSheetsVerifiedSkill(
       });
 
   try {
-    return await issuePassportVersion(payload, event, student, skill, verifiedSkill.id);
+        return await issuePassportVersion(payload, issuanceEvent, resolvedStudent, skill, verifiedSkill.id);
   } catch (error) {
+    console.error("🔥 PDF გენერირების ნამდვილი ერორი:", error);
     await payload.update({
       collection: 'verified-skills',
       id: verifiedSkill.id,
@@ -220,6 +259,92 @@ export async function processSheetsVerifiedSkill(
       },
     });
     throw new SheetsIngestionError('Passport issuance failed; see the integration log for this request.', 500, 'INGESTION', 'FAILED');
+  }
+}
+
+async function createStudentFromEvent(payload: Payload, event: SheetsVerifiedSkillEvent): Promise<Student> {
+  const firstName = event.firstName?.trim();
+  const lastName = event.lastName?.trim();
+  const email = event.email?.trim().toLowerCase();
+
+  if (!firstName || !lastName || !email) {
+    throw new SheetsIngestionError(
+      'Student not found. Creating one requires firstName, lastName, and email in the Sheets payload.',
+      422,
+      'LOOKUP',
+      'REJECTED',
+    );
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new SheetsIngestionError('Student email is invalid.', 422, 'LOOKUP', 'REJECTED');
+  }
+
+  try {
+    return await payload.create({
+      collection: 'students',
+      overrideAccess: true,
+      draft: false,
+      data: { studentId: event.studentId, firstName, lastName, email },
+    });
+  } catch (error) {
+    try {
+      const result = await payload.find({
+        collection: 'students',
+        where: { studentId: { equals: event.studentId } },
+        limit: 2,
+        depth: 0,
+        overrideAccess: true,
+      });
+      if (result.docs.length === 1) return result.docs[0];
+      if (result.docs.length > 1) {
+        throw new SheetsIngestionError('Student ID is ambiguous.', 422, 'LOOKUP', 'REJECTED');
+      }
+    } catch (lookupError) {
+      if (lookupError instanceof SheetsIngestionError) throw lookupError;
+    }
+    throw error;
+  }
+}
+
+async function createSkillFromEvent(payload: Payload, event: SheetsVerifiedSkillEvent): Promise<Skill> {
+  const name = event.skillName?.trim();
+  if (!name) {
+    throw new SheetsIngestionError(
+      'Skill not found. Creating one requires skillName in the Sheets payload.',
+      422,
+      'LOOKUP',
+      'REJECTED',
+    );
+  }
+
+  try {
+    return await payload.create({
+      collection: 'skills',
+      overrideAccess: true,
+      draft: false,
+      data: {
+        skillCode: event.skillCode,
+        name,
+        badgeId: event.badgeId?.trim() || `BDG-${event.skillCode}`,
+      },
+    });
+  } catch (error) {
+    try {
+      const result = await payload.find({
+        collection: 'skills',
+        where: { skillCode: { equals: event.skillCode } },
+        limit: 2,
+        depth: 0,
+        overrideAccess: true,
+      });
+      if (result.docs.length === 1) return result.docs[0];
+      if (result.docs.length > 1) {
+        throw new SheetsIngestionError('Skill Code is ambiguous.', 422, 'LOOKUP', 'REJECTED');
+      }
+    } catch (lookupError) {
+      if (lookupError instanceof SheetsIngestionError) throw lookupError;
+    }
+    throw error;
   }
 }
 
@@ -242,13 +367,28 @@ async function issuePassportVersion(
     depth: 0,
     overrideAccess: true,
   });
+  
   if (existingPassports.docs.length > 1) {
     throw new Error('Student has multiple passports.');
   }
 
   const existingPassport = existingPassports.docs[0];
-  const passportId = existingPassport?.passportId || `BTU-AI-${student.studentId}`;
+  
+  const cleanStudentId = student.studentId.startsWith('BTU-AI-')
+    ? student.studentId
+    : `BTU-AI-${student.studentId.replace(/^BTU-?/i, '')}`;
+
+  const passportId = existingPassport?.passportId || cleanStudentId;
   const firstIssuedAt = existingPassport?.firstIssuedAt || existingPassport?.createdAt || new Date().toISOString();
+  
+  const firstName = (student.firstName && student.firstName !== 'New') 
+    ? student.firstName 
+    : (existingPassport?.firstName || 'New');
+
+  const lastName = (student.lastName && student.lastName !== 'Student') 
+    ? student.lastName 
+    : (existingPassport?.lastName || 'Student');
+
   const passport = existingPassport
     ? await payload.update({
         collection: 'passports',
@@ -257,8 +397,8 @@ async function issuePassportVersion(
         data: {
           passportId,
           studentRecord: student.id,
-          firstName: existingPassport.firstName || student.firstName,
-          lastName: existingPassport.lastName || student.lastName,
+          firstName,
+          lastName,
           firstIssuedAt,
         },
       })
@@ -270,8 +410,8 @@ async function issuePassportVersion(
           email: student.email,
           passportId,
           studentRecord: student.id,
-          firstName: student.firstName,
-          lastName: student.lastName,
+          firstName,
+          lastName,
           firstIssuedAt,
         },
       });
@@ -332,9 +472,11 @@ async function issuePassportVersion(
 
   const latestVersion = latestVersionResult.docs[0];
   const sourceVersion = sourceVersionResult.docs[0];
+  
   if (sourceVersion && relationId(sourceVersion.passport) !== String(passport.id)) {
     throw new Error('Record ID is already assigned to another passport version.');
   }
+  
   if (sourceVersion?.issuanceStatus === 'ISSUED') {
     if (!latestVersion || sourceVersion.version > latestVersion.version) {
       await payload.update({
@@ -369,7 +511,8 @@ async function issuePassportVersion(
     throw new Error('A failed draft is older than the latest issued version and requires reconciliation.');
   }
 
-  const version = sourceVersion?.version ?? (latestVersion?.version ?? 0) + 1;
+  // დავაზღვიოთ, რომ version აუცილებლად რიცხვია
+  const version = Number(sourceVersion?.version ?? (latestVersion?.version ?? 0) + 1);
   const verificationId = sourceVersion?.verificationId ?? verificationIdForRecord(event.recordId);
   const skills = sourceVersion?.skillsSnapshot
     ? sourceVersion.skillsSnapshot.map((skill) => ({
@@ -387,9 +530,10 @@ async function issuePassportVersion(
         'Record ID': skill.recordId,
       }))
     : confirmedSkills;
+    
   const issuedAt = sourceVersion?.issuedAt ?? new Date().toISOString();
-  const pdfBuffer = await generatePassportPDF(
-    {
+  
+  const pdfStudentData = {
       'Student ID': student.studentId,
       'First Name': passport.firstName,
       'Last Name': passport.lastName,
@@ -397,10 +541,26 @@ async function issuePassportVersion(
       'First Issued At': dateOnly(passport.firstIssuedAt || firstIssuedAt),
       'Passport Version': version,
       'Issued At': issuedAt,
-    },
-    skills,
-    verificationId,
-  );
+    };
+
+  let pdfBuffer: Buffer;
+  const renderPassportPdf = async () => {
+    console.log('PDF generation starting:', { recordId: event.recordId, verificationId, version, skillCount: skills.length });
+    const generated = await generatePassportPDF(pdfStudentData, skills, verificationId);
+    console.log('PDF generation finished:', { verificationId, bytes: generated.length });
+    return generated;
+  };
+  if (sourceVersion) {
+    try {
+      pdfBuffer = await readPassportPdf(sourceVersion.verificationId, sourceVersion.documentHash);
+      console.log('Reusing stored PDF for existing version:', { verificationId: sourceVersion.verificationId });
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
+      pdfBuffer = await renderPassportPdf();
+    }
+  } else {
+    pdfBuffer = await renderPassportPdf();
+  }
 
   const registration = preparePassportRegistration(
     {
@@ -424,13 +584,13 @@ async function issuePassportVersion(
 
   if (!registration.success) throw new Error(registration.error);
 
-  if (sourceVersion && sourceVersion.documentHash !== registration.data.docHashHex) {
-    throw new Error('Prepared PDF bytes changed on retry; refusing to reuse its Verification ID.');
+  if (sourceVersion && sourceVersion.documentHash.toLowerCase() !== registration.data.docHashHex.toLowerCase()) {
+    throw new Error('Prepared PDF bytes changed and the stored version is unavailable; manual reconciliation is required.');
   }
 
   const versionData = {
     passport: passport.id,
-    version,
+    version: version,
     sourceRecordId: event.recordId,
     verificationId,
     documentHash: registration.data.docHashHex,
@@ -440,12 +600,14 @@ async function issuePassportVersion(
       skillCode,
       skillName,
       badgeId,
-      earnedAt,
+      earnedAt: new Date(earnedAt).toISOString(),
       description,
     })),
     issuerAddress: getIssuerAddress(),
-    issuedAt,
+    issuedAt: new Date(issuedAt).toISOString(),
   };
+
+  await storePassportPdf(verificationId, pdfBuffer, registration.data.docHashHex);
 
   const versionDoc = sourceVersion
     ? await payload.update({
@@ -460,32 +622,32 @@ async function issuePassportVersion(
         data: versionData,
       });
 
-  await storePassportPdf(verificationId, pdfBuffer, registration.data.docHashHex);
-
-  let txHash = versionDoc.transactionHash ?? undefined;
+  let txHash: string | undefined = versionDoc.transactionHash ?? undefined;
+  
   if (versionDoc.issuanceStatus !== 'ISSUED') {
-    try {
-      txHash = await registerPassportVersionOnChain(registration.data);
-    } catch (error) {
-      await payload.update({
-        collection: 'passport-versions',
-        id: versionDoc.id,
-        overrideAccess: true,
-        data: { issuanceStatus: 'FAILED' },
-      });
-      throw error;
-    }
-
-    const issuedVersion = await payload.update({
-      collection: 'passport-versions',
-      id: versionDoc.id,
-      overrideAccess: true,
-      data: { issuanceStatus: 'ISSUED', transactionHash: txHash },
-    });
-    if (issuedVersion.issuanceStatus !== 'ISSUED') throw new Error('Version could not be marked issued.');
-  }
-
-  if (!latestVersion || versionDoc.version > latestVersion.version) {
+    txHash = await registerAndFinalizePassportVersion(
+      () => registerPassportVersionOnChain(registration.data),
+      async (transactionHash) => {
+        const issuedVersion = await payload.update({
+          collection: 'passport-versions',
+          id: versionDoc.id,
+          overrideAccess: true,
+          data: { issuanceStatus: 'ISSUED', transactionHash },
+        });
+        if (issuedVersion.issuanceStatus !== 'ISSUED') throw new Error('Version could not be marked issued.');
+      },
+      async () => {
+        if (!latestVersion || versionDoc.version > latestVersion.version) {
+          await payload.update({
+            collection: 'passports',
+            id: passport.id,
+            overrideAccess: true,
+            data: { latestVersion: versionDoc.id },
+          });
+        }
+      },
+    );
+  } else if (!latestVersion || versionDoc.version > latestVersion.version) {
     await payload.update({
       collection: 'passports',
       id: passport.id,
@@ -493,6 +655,7 @@ async function issuePassportVersion(
       data: { latestVersion: versionDoc.id },
     });
   }
+  
   await payload.update({
     collection: 'verified-skills',
     id: verifiedSkillId,

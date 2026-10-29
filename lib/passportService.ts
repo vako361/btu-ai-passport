@@ -6,6 +6,17 @@ type PassportWorkflowResult =
   | { success: false; error: string }
   | { success: true; data: PassportRegistration };
 
+export async function registerAndFinalizePassportVersion(
+  register: () => Promise<string>,
+  markIssued: (transactionHash: string) => Promise<void>,
+  updateLatest: () => Promise<void>,
+): Promise<string> {
+  const transactionHash = await register();
+  await markIssued(transactionHash);
+  await updateLatest();
+  return transactionHash;
+}
+
 export function preparePassportRegistration(
   body: unknown,
   pdfBuffer: Buffer,

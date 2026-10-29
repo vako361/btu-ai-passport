@@ -30,6 +30,12 @@ export interface SheetsVerifiedSkillEvent {
   skillCode: string;
   earnedAt: string;
   status: VerifiedSkillStatus;
+  badgeId?: string | null;
+  // ⚠️ დაემატა ეს ველები, რომ გზაში არ დაიკარგოს:
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  skillName?: string | null;
 }
 
 export type PassportInput = PassportStudentData & PassportSkillData & {
@@ -78,11 +84,18 @@ export function parseSheetsVerifiedSkillEvent(value: unknown): SheetsVerifiedSki
   const earnedAt = stringValue(record.earnedAt);
   const status = stringValue(record.status)?.toUpperCase();
 
+  // ⚠️ ამოვიღოთ სახელი, გვარი და იმეილიც შემოსული JSON-იდან:
+  const firstName = stringValue(record.firstName);
+  const lastName = stringValue(record.lastName);
+  const email = stringValue(record.email);
+  const skillName = stringValue(record.skillName);
+  const badgeId = stringValue(record.badgeId);
+
   if (!recordId || !studentId || !skillCode || !isDateOnly(earnedAt) || !isVerifiedSkillStatus(status)) {
     return null;
   }
 
-  return { recordId, studentId, skillCode, earnedAt, status };
+  return { recordId, studentId, skillCode, earnedAt, status, badgeId, firstName, lastName, email, skillName };
 }
 
 function stringValue(value: unknown): string | null {

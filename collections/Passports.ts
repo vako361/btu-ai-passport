@@ -36,7 +36,12 @@ export const Passports: CollectionConfig = {
       if (data.studentRecord !== undefined && originalDoc?.studentRecord && relationId(data.studentRecord) !== relationId(originalDoc.studentRecord)) {
         throw new Error('A passport cannot be reassigned to another student.');
       }
-      if (data.firstIssuedAt !== undefined && originalDoc?.firstIssuedAt && data.firstIssuedAt !== originalDoc.firstIssuedAt) {
+      // ⚠️ უსაფრთხო თარიღის შედარება, რათა განახლება არ ჩაიშალოს
+      if (
+        data.firstIssuedAt !== undefined &&
+        originalDoc?.firstIssuedAt &&
+        new Date(data.firstIssuedAt).getTime() !== new Date(originalDoc.firstIssuedAt).getTime()
+      ) {
         throw new Error('The first issue date is permanent and cannot be changed.');
       }
       if (data.firstName !== undefined && data.firstName !== originalDoc?.firstName) {

@@ -34,12 +34,31 @@ function getDatabaseConnectionString() {
 }
 
 export default buildConfig({
+  // ⚠️ serverURL უზრუნველყოფს ადმინ პანელის რესურსების სწორად ჩატვირთვას IP/დომენიდან
+  serverURL: process.env.PAYLOAD_PUBLIC_SERVER_URL || 'http://192.168.100.5:3000',
   admin: {
     user: Users.slug,
     importMap: {
       baseDir: path.resolve(dirname),
     },
   },
+  // ⚠️ CORS და CSRF კონფიგურაცია გარე ბრაუზერებისა და IP/ტუნელებისთვის
+  cors: [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://192.168.100.199:3000',
+    'http://192.168.100.5:3000',
+    'https://*.ngrok-free.dev',
+    'https://*.lhr.life',
+  ],
+  csrf: [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://192.168.100.199:3000',
+    'http://192.168.100.5:3000',
+    'https://*.ngrok-free.dev',
+    'https://*.lhr.life',
+  ],
   collections: [Users, Media, Students, Skills, VerifiedSkills, Passports, PassportVersions, IntegrationLogs],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || "",
@@ -50,6 +69,10 @@ export default buildConfig({
     push: false,
     pool: {
       connectionString: getDatabaseConnectionString(),
+      max: 5,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 15_000,
+      keepAlive: true,
     },
   }),
   sharp,

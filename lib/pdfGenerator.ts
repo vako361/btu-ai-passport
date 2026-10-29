@@ -1,203 +1,469 @@
-import fontkit from '@pdf-lib/fontkit';
-import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib';
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
+import fontkit from '@pdf-lib/fontkit';
+import QRCode from 'qrcode';
+import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib';
 import type { PassportSkillData, PassportStudentData } from '@/lib/passportTypes';
 
-const BRAND = rgb(0.996, 0.004, 0.494);
-const INK = rgb(0.12, 0.13, 0.15);
-const MUTED = rgb(0.38, 0.4, 0.43);
-const PALE = rgb(0.985, 0.96, 0.972);
-const BORDER = rgb(0.9, 0.87, 0.89);
-const SKILLS_PER_PAGE = 6;
-
-type DrawSkill = PassportSkillData & { 'Skill Code'?: string };
-type FontWeight = 'regular' | 'bold';
-type FontSet = {
-  georgianRegular: PDFFont;
-  georgianBold: PDFFont;
-  latinRegular: PDFFont;
-  latinBold: PDFFont;
+type DrawSkill = PassportSkillData & {
+  'Skill Code'?: string;
+  'Stamp Type'?: string;
+  Category?: string;
+  'Earned Through'?: string;
+  'Learning Format'?: string;
+  recordId?: string;
+  badge?: string;
+  badgeId?: string;
+  stampType?: string;
+  category?: string;
+  skillCode?: string;
+  earnedThrough?: string;
+  learningFormat?: string;
+  source?: string;
 };
 
-function isGeorgian(character: string) {
-  const codePoint = character.codePointAt(0) ?? 0;
-  return (codePoint >= 0x10a0 && codePoint <= 0x10ff) ||
-    (codePoint >= 0x1c90 && codePoint <= 0x1cbf) ||
-    (codePoint >= 0x2d00 && codePoint <= 0x2d2f);
+const BADGE_MAPPING: Record<string, string> = {
+  'FOCUSED LEARNING': 'badge_focused.png',
+  'AI SKILL': 'badge_focused.png',
+  'PROMPT ENGINEERING': 'badge_focused.png',
+  'AI ETHICS & RESPONSIBLE USE': 'badge_focused.png',
+  'SKL-002': 'badge_focused.png',
+  'BDG-AI-001': 'badge_focused.png',
+  'APPLIED LEARNING': 'badge_applied.png',
+  'AI APPLIED SKILL': 'badge_applied.png',
+  'AI WORKFLOW AUTOMATION': 'badge_applied.png',
+  'AI AGENTS': 'badge_applied.png',
+  'BDG-AI-002': 'badge_applied.png',
+  'EXTENDED ACADEMIC LEARNING': 'badge_advanced.png',
+  'AI ADVANCED SKILL': 'badge_advanced.png',
+  'DATA ANALYSIS WITH AI': 'badge_advanced.png',
+  'DATE ANALYSIS WITH AI': 'badge_advanced.png',
+  'BDG-AI-003': 'badge_advanced.png',
+};
+
+const PAGE_HEIGHT = 595.276;
+const PX = 0.75; // template coordinates below are measured at 96 dpi from the top-left
+const x = (px: number) => px * PX;
+const y = (px: number) => PAGE_HEIGHT - px * PX;
+
+const GRID_PER_PAGE = 10;
+const TABLE_ROWS_PER_PAGE = 5;
+const TEMPLATE_PAGES = { cover: 0, about: 1, grid: 2, table: 3 } as const;
+
+const INK = rgb(0x1e / 255, 0x21 / 255, 0x26 / 255);
+const BTU_PINK = rgb(0.996, 0.004, 0.494);
+const MUTED = rgb(0.29, 0.29, 0.29);
+const WHITE = rgb(1, 1, 1);
+
+// Page 1 positions in PDF points from the bottom-left, measured from the template's printed labels.
+const COVER = {
+  firstName: { x: 196, y: 322, size: 20, maxWidth: 380 },
+  lastName: { x: 246, y: 282, size: 20, maxWidth: 330 },
+  date: { x: 650, y: 330, size: 14 },
+  passportId: { centerX: 722.5, y: 88, size: 9 },
+  verificationId: { rightX: 800, y: 15, size: 7 },
+};
+
+// Pages 1/3 have little room right of "PASSPORT ID:", so the value sits beneath the label.
+const PASSPORT_ID_BELOW_LABEL = { rightX: 1040, y: 678, size: 8 };
+const PASSPORT_ID_AFTER_LABEL = { x: 206, y: 656, size: 9 };
+
+// Page 3: 5 columns x 2 rows of 175x202 px cards.
+const GRID = {
+  columnLeft: [104, 290, 477, 663, 849],
+  rowTop: [185, 400],
+  cardWidth: 175,
+  badgeCenterY: 88,
+  badgeBackdropRadius: 36,
+  badgeSize: 52,
+  nameBaselineY: 156,
+  nameLineHeight: 12.5,
+  codeBaselineY: 188,
+  textWidth: 148,
+};
+
+// Page 4 coordinates are PDF points from the bottom-left.
+const TABLE = {
+  rowCentersY: [379, 325, 271, 217, 163],
+  stampCenterX: 141,
+  stampWidth: 85,
+  stampHeight: 32,
+  skill: { centerX: 252, width: 88 },
+  description: { centerX: 373, width: 136 },
+  earnedThrough: { centerX: 533, width: 154 },
+  date: { centerX: 698, width: 132 },
+};
+
+const QR = { about: { x: 340, y: 700 }, table: { x: 560, y: 700 }, sizePt: 38 };
+const VERIFICATION_FOOTER = { rightX: 1086, y: 772, size: 7 };
+
+type Fonts = { geoRegular: PDFFont; geoBold: PDFFont; latRegular: PDFFont; latBold: PDFFont };
+type Align = 'left' | 'center' | 'right';
+
+const isGeorgian = (char: string) => /[\u10A0-\u10FF\u1C90-\u1CBF\u2D00-\u2D2F]/.test(char);
+
+function cleanText(value: string | undefined | null) {
+  return (value ?? '').replace(/\s+/g, ' ').trim();
 }
 
-function fontFor(character: string, fonts: FontSet, weight: FontWeight) {
-  if (isGeorgian(character)) return weight === 'bold' ? fonts.georgianBold : fonts.georgianRegular;
-  return weight === 'bold' ? fonts.latinBold : fonts.latinRegular;
+// The Georgian font has no Latin glyphs, so mixed strings are split into per-script runs.
+function runs(text: string, fonts: Fonts, bold: boolean) {
+  const result: { text: string; font: PDFFont }[] = [];
+  let georgian = false;
+  for (const char of text) {
+    if (!/\s/.test(char)) georgian = isGeorgian(char);
+    const font = georgian
+      ? (bold ? fonts.geoBold : fonts.geoRegular)
+      : (bold ? fonts.latBold : fonts.latRegular);
+    const last = result[result.length - 1];
+    if (last && last.font === font) last.text += char;
+    else result.push({ text: char, font });
+  }
+  return result;
 }
 
-function textWidth(text: string, size: number, fonts: FontSet, weight: FontWeight) {
-  return Array.from(text).reduce((width, character) => width + fontFor(character, fonts, weight).widthOfTextAtSize(character, size), 0);
+function measure(text: string, size: number, fonts: Fonts, bold: boolean) {
+  return runs(text, fonts, bold).reduce((total, run) => total + run.font.widthOfTextAtSize(run.text, size), 0);
 }
 
-function drawMixedText(
+function drawLine(
   page: PDFPage,
   text: string,
-  x: number,
-  y: number,
-  size: number,
-  fonts: FontSet,
-  weight: FontWeight,
-  color: ReturnType<typeof rgb>,
+  options: { x: number; y: number; size: number; fonts: Fonts; bold?: boolean; align?: Align; color?: ReturnType<typeof rgb> },
 ) {
-  const segments: { text: string; font: PDFFont }[] = [];
-  for (const character of Array.from(text)) {
-    const font = fontFor(character, fonts, weight);
-    const previous = segments[segments.length - 1];
-    if (previous?.font === font) previous.text += character;
-    else segments.push({ text: character, font });
-  }
+  const bold = options.bold ?? false;
+  const content = cleanText(text);
+  if (!content) return;
 
-  let cursorX = x;
-  for (const segment of segments) {
-    page.drawText(segment.text, { x: cursorX, y, size, font: segment.font, color });
-    cursorX += segment.font.widthOfTextAtSize(segment.text, size);
+  const width = measure(content, options.size, options.fonts, bold);
+  let cursor = options.align === 'center' ? options.x - width / 2 : options.align === 'right' ? options.x - width : options.x;
+
+  for (const run of runs(content, options.fonts, bold)) {
+    page.drawText(run.text, { x: cursor, y: options.y, size: options.size, font: run.font, color: options.color ?? INK });
+    cursor += run.font.widthOfTextAtSize(run.text, options.size);
   }
 }
 
-function wrapText(text: string, fonts: FontSet, weight: FontWeight, size: number, maxWidth: number) {
+function wrap(text: string, size: number, fonts: Fonts, bold: boolean, maxWidth: number, maxLines: number) {
   const lines: string[] = [];
-  for (const paragraph of text.split(/\r?\n/)) {
-    let line = '';
-    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
-      const candidate = line ? `${line} ${word}` : word;
-      if (textWidth(candidate, size, fonts, weight) <= maxWidth) {
-        line = candidate;
-        continue;
-      }
-      if (line) lines.push(line);
-      line = word;
+  let current = '';
+
+  for (const word of cleanText(text).split(' ').filter(Boolean)) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (measure(candidate, size, fonts, bold) <= maxWidth) {
+      current = candidate;
+      continue;
     }
-    if (line) lines.push(line);
+    if (current) lines.push(current);
+
+    // A single over-long word is split by characters.
+    let piece = '';
+    for (const char of word) {
+      if (piece && measure(piece + char, size, fonts, bold) > maxWidth) {
+        lines.push(piece);
+        piece = char;
+      } else {
+        piece += char;
+      }
+    }
+    current = piece;
   }
+  if (current) lines.push(current);
+
+  if (lines.length <= maxLines) return lines;
+  const kept = lines.slice(0, maxLines);
+  let last = kept[maxLines - 1];
+  while (last.length > 1 && measure(`${last}…`, size, fonts, bold) > maxWidth) last = last.slice(0, -1);
+  kept[maxLines - 1] = `${last}…`;
+  return kept;
+}
+
+function wrapText(text: string, maxCharsPerLine: number) {
+  const maxChars = Math.max(1, Math.floor(maxCharsPerLine));
+  const lines: string[] = [];
+  let current = '';
+
+  for (const word of cleanText(text).split(' ').filter(Boolean)) {
+    if (word.length > maxChars) {
+      if (current) lines.push(current);
+      for (let index = 0; index < word.length; index += maxChars) {
+        lines.push(word.slice(index, index + maxChars));
+      }
+      current = '';
+      continue;
+    }
+
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length <= maxChars) current = candidate;
+    else {
+      lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
   return lines;
 }
 
-function drawWrappedText(
-  page: PDFPage,
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-  fonts: FontSet,
-  weight: FontWeight,
-  size: number,
-  color = INK,
-  maxLines = 3,
-) {
-  const lines = wrapText(text, fonts, weight, size, maxWidth);
-  const visibleLines = lines.slice(0, maxLines);
-  if (lines.length > maxLines && visibleLines.length > 0) {
-    let lastLine = visibleLines[maxLines - 1];
-    while (lastLine && textWidth(`${lastLine}...`, size, fonts, weight) > maxWidth) {
-      lastLine = lastLine.slice(0, -1).trimEnd();
+function formatTableDate(value: string | undefined, fallback: string) {
+  for (const candidate of [cleanText(value), cleanText(fallback)]) {
+    if (!candidate) continue;
+    const dateOnly = candidate.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+    const date = dateOnly ? new Date(`${dateOnly}T00:00:00.000Z`) : new Date(candidate);
+    if (!Number.isNaN(date.getTime())) {
+      const formatted = date.toISOString().slice(0, 10);
+      if (!dateOnly || formatted === dateOnly) return formatted;
     }
-    visibleLines[maxLines - 1] = `${lastLine}...`;
+  }
+  return '1970-01-01';
+}
+
+function fitSize(text: string, size: number, maxWidth: number, fonts: Fonts, bold: boolean) {
+  let fitted = size;
+  while (fitted > 8 && measure(text, fitted, fonts, bold) > maxWidth) fitted -= 0.5;
+  return fitted;
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  if (!items.length) return [[]];
+  return Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
+}
+
+const fontBytes = (fileName: string) => fs.readFile(path.join(process.cwd(), 'assets', 'fonts', fileName));
+
+async function loadBadge(doc: PDFDocument, cache: Map<string, PDFImage>, skill: DrawSkill) {
+  const badgeInputs = {
+    skillCode: skill.skillCode ?? skill['Skill Code'],
+    badgeId: skill.badgeId ?? skill.badge ?? skill['Badge/Stamp'],
+    stampType: skill.stampType ?? skill['Stamp Type'] ?? skill.category ?? skill.Category,
+  };
+  console.log("Rendering skill badge:", badgeInputs);
+
+  const normalizedBadgeId = cleanText(skill.badgeId ?? skill.badge ?? skill['Badge/Stamp']).toUpperCase();
+  const mappedBadgeIdFile = BADGE_MAPPING[normalizedBadgeId];
+  const identifiers = [
+    skill.badge,
+    skill.badgeId,
+    skill['Badge/Stamp'],
+    skill.stampType,
+    skill['Stamp Type'],
+    skill.category,
+    skill.Category,
+    skill.skillCode,
+    skill['Skill Code'],
+    skill['Skill Name'],
+  ].map((value) => cleanText(value).toUpperCase()).filter(Boolean);
+  const officialFiles = Object.values(BADGE_MAPPING);
+  const fileName = mappedBadgeIdFile ?? identifiers.map((identifier) => {
+    if (Object.prototype.hasOwnProperty.call(BADGE_MAPPING, identifier)) return BADGE_MAPPING[identifier];
+    return officialFiles.find((file) => file.toUpperCase() === identifier);
+  }).find((file): file is string => file !== undefined);
+  console.log("Resolved badge image file:", fileName ?? null);
+  if (!fileName) {
+    console.error('BADGE MAPPING NOT FOUND:', badgeInputs);
+    return null;
   }
 
-  visibleLines.forEach((line, index) => {
-    drawMixedText(page, line, x, y - index * (size + 4), size, fonts, weight, color);
-  });
-  return visibleLines.length;
-}
-
-function drawFooter(page: PDFPage, verificationId: string, pageNumber: number, pageCount: number, fonts: FontSet) {
-  const { width } = page.getSize();
-  page.drawLine({ start: { x: 48, y: 54 }, end: { x: width - 48, y: 54 }, thickness: 0.7, color: BORDER });
-  drawMixedText(page, `Verification ID: ${verificationId}`, 48, 35, 8, fonts, 'regular', MUTED);
-  drawMixedText(page, `${pageNumber} / ${pageCount}`, width - 84, 35, 8, fonts, 'regular', MUTED);
-}
-
-function drawBrandHeader(page: PDFPage, title: string, subtitle: string, fonts: FontSet) {
-  const { width, height } = page.getSize();
-  page.drawRectangle({ x: 0, y: height - 92, width, height: 92, color: BRAND });
-  drawMixedText(page, 'BTU  |  AI SKILLS DIGITAL PASSPORT', 48, height - 39, 10, fonts, 'bold', rgb(1, 1, 1));
-  drawMixedText(page, title, 48, height - 66, 17, fonts, 'bold', rgb(1, 1, 1));
-  drawMixedText(
-    page,
-    subtitle,
-    width - Math.min(280, textWidth(subtitle, 8, fonts, 'regular')) - 48,
-    height - 64,
-    8,
-    fonts,
-    'regular',
-    rgb(1, 1, 1),
-  );
-}
-
-function drawField(page: PDFPage, label: string, value: string, x: number, y: number, width: number, fonts: FontSet) {
-  drawMixedText(page, label, x, y, 8, fonts, 'regular', MUTED);
-  drawWrappedText(page, value || '-', x, y - 21, width, fonts, 'bold', 11, INK, 2);
-}
-
-async function embedBadge(pdfDoc: PDFDocument, badgeId: string | undefined): Promise<PDFImage | undefined> {
-  if (!badgeId || !/^[\w-]+(?:\.png)?$/i.test(badgeId)) return undefined;
-  const fileName = badgeId.toLowerCase().endsWith('.png') ? badgeId : `${badgeId}.png`;
-  const badgePath = path.join(process.cwd(), 'public', 'images', fileName);
-  try {
-    return await pdfDoc.embedPng(await fs.readFile(badgePath));
-  } catch {
-    return undefined;
+  const filePath = path.join(process.cwd(), 'assets', fileName);
+  if (!existsSync(filePath)) {
+    console.error('BADGE FILE MISSING:', filePath);
+    throw new Error(`Mapped badge file does not exist: ${filePath}`);
   }
+
+  const cached = cache.get(fileName);
+  if (cached) return cached;
+  const imageBytes = await fs.readFile(filePath);
+  const image = await doc.embedPng(imageBytes);
+  cache.set(fileName, image);
+  return image;
 }
 
-function drawSkillCard(
+function drawImageWithLogging(
   page: PDFPage,
-  skill: DrawSkill,
-  index: number,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  fonts: FontSet,
-  badge?: PDFImage,
+  pageIndex: number,
+  image: PDFImage,
+  coordinates: { x: number; y: number; width: number; height: number },
 ) {
-  page.drawRectangle({
-    x,
-    y,
+  console.log("Drawing image on page", pageIndex, "at", coordinates);
+  page.drawImage(image, coordinates);
+}
+
+function drawBadge(
+  page: PDFPage,
+  pageIndex: number,
+  image: PDFImage,
+  center: { x: number; y: number },
+  size: number,
+) {
+  const scale = Math.min(size / image.width, size / image.height);
+  const width = image.width * scale;
+  const height = image.height * scale;
+  drawImageWithLogging(page, pageIndex, image, {
+    x: center.x - width / 2,
+    y: center.y - height / 2,
     width,
     height,
-    color: rgb(1, 1, 1),
-    borderColor: BORDER,
-    borderWidth: 1,
   });
-  page.drawRectangle({ x, y: y + height - 5, width, height: 5, color: BRAND });
+}
 
-  const badgeX = x + 15;
-  const badgeY = y + height - 61;
-  if (badge) {
-    page.drawImage(badge, { x: badgeX, y: badgeY, width: 40, height: 40 });
-  } else {
-    page.drawCircle({ x: badgeX + 20, y: badgeY + 20, size: 20, color: PALE, borderColor: BRAND, borderWidth: 1.5 });
-    const badgeLabel = (skill['Badge/Stamp'] || `S${index + 1}`).slice(0, 8);
-    const badgeSize = 7;
-    drawMixedText(
-      page,
-      badgeLabel,
-      badgeX + Math.max(3, (40 - textWidth(badgeLabel, badgeSize, fonts, 'bold')) / 2),
-      badgeY + 17,
-      badgeSize,
-      fonts,
-      'bold',
-      BRAND,
+function drawPassportIdBelowLabel(page: PDFPage, passportId: string, fonts: Fonts) {
+  drawLine(page, passportId, {
+    x: x(PASSPORT_ID_BELOW_LABEL.rightX), y: y(PASSPORT_ID_BELOW_LABEL.y),
+    size: PASSPORT_ID_BELOW_LABEL.size, fonts, bold: true, align: 'right',
+  });
+}
+
+function drawPassportIdAfterLabel(page: PDFPage, passportId: string, fonts: Fonts) {
+  drawLine(page, passportId, {
+    x: x(PASSPORT_ID_AFTER_LABEL.x), y: y(PASSPORT_ID_AFTER_LABEL.y),
+    size: PASSPORT_ID_AFTER_LABEL.size, fonts, bold: true,
+  });
+}
+
+function drawTableFooter(page: PDFPage, passportId: string, fonts: Fonts) {
+  page.drawRectangle({ x: 69, y: 98, width: 84, height: 20, color: WHITE });
+  drawLine(page, `PASSPORT ID: ${passportId}`, { x: 60, y: 80, size: 8, fonts });
+}
+
+function drawCover(
+  page: PDFPage,
+  student: PassportStudentData,
+  passportId: string,
+  issueDate: string,
+  verificationId: string,
+  fonts: Fonts,
+) {
+  const firstName = cleanText(student['First Name']).toUpperCase();
+  const lastName = cleanText(student['Last Name']).toUpperCase();
+
+  drawLine(page, firstName, {
+    x: COVER.firstName.x, y: COVER.firstName.y, fonts, bold: true,
+    size: fitSize(firstName, COVER.firstName.size, COVER.firstName.maxWidth, fonts, true),
+  });
+  drawLine(page, lastName, {
+    x: COVER.lastName.x, y: COVER.lastName.y, fonts, bold: true,
+    size: fitSize(lastName, COVER.lastName.size, COVER.lastName.maxWidth, fonts, true),
+  });
+  drawLine(page, issueDate, { x: COVER.date.x, y: COVER.date.y, size: COVER.date.size, fonts, bold: true });
+  drawLine(page, passportId, {
+    x: COVER.passportId.centerX, y: COVER.passportId.y, size: COVER.passportId.size, fonts, bold: true, align: 'center',
+  });
+  drawLine(page, `VERIFICATION ID: ${verificationId}`, {
+    x: COVER.verificationId.rightX, y: COVER.verificationId.y, size: COVER.verificationId.size, fonts,
+    align: 'right', color: WHITE,
+  });
+}
+
+async function drawGrid(
+  doc: PDFDocument,
+  page: PDFPage,
+  pageIndex: number,
+  skills: DrawSkill[],
+  passportId: string,
+  fonts: Fonts,
+  badges: Map<string, PDFImage>,
+) {
+  drawPassportIdBelowLabel(page, passportId, fonts);
+
+  for (const [index, skill] of skills.entries()) {
+    const left = GRID.columnLeft[index % 5];
+    const top = GRID.rowTop[Math.floor(index / 5)];
+    const centerX = x(left + GRID.cardWidth / 2);
+    const badgeCenter = { x: centerX, y: y(top + GRID.badgeCenterY) };
+
+    // Opaque backing hides the template's grey placeholder asterisk behind the badge.
+    page.drawCircle({ x: badgeCenter.x, y: badgeCenter.y, size: GRID.badgeBackdropRadius, color: WHITE });
+    const badge = await loadBadge(doc, badges, skill);
+    if (badge) drawBadge(page, pageIndex, badge, badgeCenter, GRID.badgeSize);
+
+    const nameLines = wrap(skill['Skill Name'] || skill['Skill Code'] || 'AI Skill', 8, fonts, true, GRID.textWidth * PX, 2);
+    nameLines.forEach((line, lineIndex) => {
+      drawLine(page, line, {
+        x: centerX, y: y(top + GRID.nameBaselineY + lineIndex * GRID.nameLineHeight),
+        size: 8, fonts, bold: true, align: 'center',
+      });
+    });
+    drawLine(page, skill['Skill Code'] || '', {
+      x: centerX, y: y(top + GRID.codeBaselineY), size: 7, fonts, bold: true, align: 'center', color: BTU_PINK,
+    });
+  }
+}
+
+async function drawTable(
+  doc: PDFDocument,
+  page: PDFPage,
+  pageIndex: number,
+  skills: DrawSkill[],
+  passportId: string,
+  fallbackDate: string,
+  fonts: Fonts,
+  badges: Map<string, PDFImage>,
+) {
+  const drawCell = (
+    lines: string[], column: { centerX: number; width: number }, rowCenterY: number,
+    size: number, lineHeight: number, bold: boolean, color = INK,
+  ) => {
+    const firstBaseline = rowCenterY + ((lines.length - 1) * lineHeight) / 2 - size * 0.35;
+    lines.forEach((line, lineIndex) => {
+      drawLine(page, line, { x: column.centerX, y: firstBaseline - lineIndex * lineHeight, size, fonts, bold, align: 'center', color });
+    });
+  };
+
+  const fitCellLines = (
+    text: string, maxChars: number, maxWidth: number, size: number, bold: boolean, maxLines: number,
+  ) => {
+    const lines = wrapText(text, maxChars)
+      .flatMap((line) => wrap(line, size, fonts, bold, maxWidth, 10));
+    if (lines.length <= maxLines) return lines;
+    const kept = lines.slice(0, maxLines);
+    let last = kept[maxLines - 1];
+    while (last.length > 1 && measure(`${last}…`, size, fonts, bold) > maxWidth) last = last.slice(0, -1);
+    kept[maxLines - 1] = `${last}…`;
+    return kept;
+  };
+
+  drawTableFooter(page, passportId, fonts);
+
+  for (const [index, skill] of skills.entries()) {
+    const rowCenterY = TABLE.rowCentersY[index];
+    if (rowCenterY === undefined) continue;
+
+    const badge = await loadBadge(doc, badges, skill);
+    if (badge) {
+      const scale = Math.min(TABLE.stampWidth / badge.width, TABLE.stampHeight / badge.height);
+      const width = badge.width * scale;
+      const height = badge.height * scale;
+      drawImageWithLogging(page, pageIndex, badge, {
+        x: TABLE.stampCenterX - width / 2,
+        y: rowCenterY - height / 2,
+        width,
+        height,
+      });
+    }
+
+    const skillName = cleanText(skill['Skill Name'] || skill.skillCode || skill['Skill Code'] || 'AI Skill').toUpperCase();
+    const descriptionText = cleanText(skill['Skill Description'] || 'Verified BTU AI Skill').toUpperCase();
+    const earnedText = cleanText(
+      skill.earnedThrough || skill['Earned Through'] || skill.learningFormat || skill['Learning Format'] || skill.source || 'BTU Practical Workshop',
+    ).toUpperCase();
+
+    drawCell(
+      fitCellLines(skillName, 18, TABLE.skill.width, 7.5, true, 3),
+      TABLE.skill, rowCenterY, 7.5, 9, true,
+    );
+    drawCell(
+      fitCellLines(descriptionText, 44, TABLE.description.width, 7.2, false, 5),
+      TABLE.description, rowCenterY, 7.2, 8.8, false, MUTED,
+    );
+    drawCell(
+      fitCellLines(earnedText, 40, TABLE.earnedThrough.width, 7.2, false, 3),
+      TABLE.earnedThrough, rowCenterY, 7.2, 8.8, false,
+    );
+    drawCell(
+      [formatTableDate(skill['Date Earned'], fallbackDate)],
+      TABLE.date, rowCenterY, 7.5, 9, false,
     );
   }
-
-  const textX = x + 67;
-  const cardTextWidth = width - 82;
-  drawWrappedText(page, skill['Skill Name'] || 'AI Skill', textX, y + height - 28, cardTextWidth, fonts, 'bold', 11, INK, 2);
-  drawMixedText(page, `Badge: ${skill['Badge/Stamp'] || 'BTU'}`, textX, y + height - 69, 8, fonts, 'regular', BRAND);
-
-  const code = skill['Skill Code'] || skill['Record ID'] || '-';
-  drawMixedText(page, `Code: ${code}`, x + 15, y + 73, 8, fonts, 'regular', MUTED);
-  drawMixedText(page, `Date earned: ${skill['Date Earned'] || '-'}`, x + 15, y + 56, 8, fonts, 'regular', MUTED);
-  drawWrappedText(page, skill['Skill Description'] || 'BTU-confirmed AI skill.', x + 15, y + 36, width - 30, fonts, 'regular', 8, INK, 2);
 }
 
 export async function generatePassportPDF(
@@ -205,117 +471,83 @@ export async function generatePassportPDF(
   allSkills: DrawSkill[],
   verificationId: string,
 ): Promise<Buffer> {
-  const templatePath = path.join(process.cwd(), 'assets', 'passport-template.pdf');
-  const pdfDoc = await PDFDocument.load(await fs.readFile(templatePath));
-  pdfDoc.registerFontkit(fontkit);
+  const template = await PDFDocument.load(await fs.readFile(path.join(process.cwd(), 'assets', 'Passport_Blank.pdf')));
+  if (template.getPageCount() < 4) throw new Error('Passport_Blank.pdf must contain 4 pages.');
 
-  const fontsDirectory = path.join(process.cwd(), 'assets', 'fonts');
-  const [georgianRegularBytes, georgianBoldBytes, latinRegularBytes, latinBoldBytes] = await Promise.all([
-    fs.readFile(path.join(fontsDirectory, 'NotoSansGeorgian-Regular.ttf')),
-    fs.readFile(path.join(fontsDirectory, 'NotoSansGeorgian-Bold.ttf')),
-    fs.readFile(path.join(fontsDirectory, 'NotoSans-Latin-Regular.ttf')),
-    fs.readFile(path.join(fontsDirectory, 'NotoSans-Latin-Bold.ttf')),
+  const gridPages = chunk(allSkills, GRID_PER_PAGE);
+  const tablePages = chunk(allSkills, TABLE_ROWS_PER_PAGE);
+
+  const doc = await PDFDocument.create({ updateMetadata: false });
+  doc.registerFontkit(fontkit);
+
+  const [geoRegular, geoBold, latRegular, latBold] = await Promise.all([
+    fontBytes('NotoSansGeorgian-Regular.ttf'),
+    fontBytes('NotoSansGeorgian-Bold.ttf'),
+    fontBytes('NotoSans-Latin-Regular.ttf'),
+    fontBytes('NotoSans-Latin-Bold.ttf'),
   ]);
-  const [georgianRegular, georgianBold, latinRegular, latinBold] = await Promise.all([
-    pdfDoc.embedFont(georgianRegularBytes, { subset: false }),
-    pdfDoc.embedFont(georgianBoldBytes, { subset: false }),
-    pdfDoc.embedFont(latinRegularBytes, { subset: false }),
-    pdfDoc.embedFont(latinBoldBytes, { subset: false }),
+  const fonts: Fonts = {
+    geoRegular: await doc.embedFont(geoRegular, { subset: true }),
+    geoBold: await doc.embedFont(geoBold, { subset: true }),
+    latRegular: await doc.embedFont(latRegular, { subset: true }),
+    latBold: await doc.embedFont(latBold, { subset: true }),
+  };
+
+  // The template's grid and table pages are repeated once per batch of skills.
+  const copied = await doc.copyPages(template, [
+    TEMPLATE_PAGES.cover,
+    TEMPLATE_PAGES.about,
+    ...gridPages.map(() => TEMPLATE_PAGES.grid),
+    ...tablePages.map(() => TEMPLATE_PAGES.table),
   ]);
-  const fonts: FontSet = { georgianRegular, georgianBold, latinRegular, latinBold };
+  copied.forEach((page) => doc.addPage(page));
 
-  const cover = pdfDoc.getPages()[0];
-  if (!cover) throw new Error('Passport template must contain at least one page.');
-  const { width, height } = cover.getSize();
-  while (pdfDoc.getPageCount() > 1) pdfDoc.removePage(pdfDoc.getPageCount() - 1);
+  const issuedAt = studentData['Issued At'] || studentData['First Issued At'] || '1970-01-01T00:00:00.000Z';
+  const parsedIssuedAt = new Date(issuedAt);
+  const metadataDate = Number.isNaN(parsedIssuedAt.getTime()) ? new Date(0) : parsedIssuedAt;
+  const issueDate = issuedAt.split('T')[0];
+  const rawId = studentData['Passport ID'] || studentData['Student ID'] || '001';
+  const passportId = rawId.startsWith('BTU-AI-') ? rawId : `BTU-AI-${rawId}`;
 
-  const version = studentData['Passport Version'] ?? 1;
-  const issuedAt = studentData['Issued At'] || new Date().toISOString();
-  const coverTitle = 'AI SKILLS DIGITAL PASSPORT';
-  drawBrandHeader(cover, coverTitle, 'ციფრული პასპორტი', fonts);
+  const baseUrl = process.env.PUBLIC_BASE_URL?.replace(/\/$/, '');
+  const qrImage = baseUrl
+    ? await doc.embedPng(await QRCode.toBuffer(`${baseUrl}/verify?code=${encodeURIComponent(verificationId)}`, { margin: 1, width: 240 }))
+    : null;
+  const drawQr = (page: PDFPage, pageIndex: number, at: { x: number; y: number }) => {
+    if (qrImage) drawImageWithLogging(page, pageIndex, qrImage, { x: x(at.x), y: y(at.y), width: QR.sizePt, height: QR.sizePt });
+  };
 
-  drawWrappedText(
-    cover,
-    `${studentData['First Name']} ${studentData['Last Name'] || ''}`.trim(),
-    60,
-    height - 190,
-    width - 120,
-    fonts,
-    'bold',
-    25,
-    INK,
-    2,
-  );
-  drawMixedText(cover, 'ბიზნესისა და ტექნოლოგიების უნივერსიტეტი', 60, height - 250, 11, fonts, 'regular', MUTED);
+  const pages = doc.getPages();
+  const badges = new Map<string, PDFImage>();
 
-  const infoX = 60;
-  const infoY = 205;
-  const infoWidth = width - 120;
-  const infoHeight = 205;
-  cover.drawRectangle({ x: infoX, y: infoY, width: infoWidth, height: infoHeight, color: PALE });
-  drawField(cover, 'სტუდენტის ID', studentData['Student ID'], infoX + 20, infoY + 170, 215, fonts);
-  drawField(cover, 'Passport ID', studentData['Passport ID'] || '-', infoX + 265, infoY + 170, 215, fonts);
-  drawField(cover, 'პირველი გაცემის თარიღი', studentData['First Issued At'] || '-', infoX + 20, infoY + 104, 215, fonts);
-  drawField(cover, 'ვერსია', `V${version}`, infoX + 265, infoY + 104, 215, fonts);
-  drawField(cover, 'Verification Code', verificationId, infoX + 20, infoY + 38, infoWidth - 40, fonts);
-  drawFooter(cover, verificationId, 1, 1 + Math.max(1, Math.ceil(allSkills.length / SKILLS_PER_PAGE)), fonts);
+  drawCover(pages[0], studentData, passportId, issueDate, verificationId, fonts);
+  drawPassportIdAfterLabel(pages[1], passportId, fonts);
+  drawQr(pages[1], 2, QR.about);
 
-  const skillPageCount = Math.max(1, Math.ceil(allSkills.length / SKILLS_PER_PAGE));
-  const skillPages: PDFPage[] = [];
-  for (let pageIndex = 0; pageIndex < skillPageCount; pageIndex += 1) {
-    skillPages.push(pdfDoc.addPage([width, height]));
+  for (const [index, skills] of gridPages.entries()) {
+    await drawGrid(doc, pages[2 + index], 3 + index, skills, passportId, fonts, badges);
+  }
+  for (const [index, skills] of tablePages.entries()) {
+    const page = pages[2 + gridPages.length + index];
+    const pageIndex = 3 + gridPages.length + index;
+    await drawTable(doc, page, pageIndex, skills, passportId, issueDate, fonts, badges);
+    if (index === tablePages.length - 1) drawQr(page, pageIndex, QR.table);
   }
 
-  const badgeCache = new Map<string, PDFImage | undefined>();
-  const margin = 48;
-  const gapX = 16;
-  const gapY = 14;
-  const cardWidth = (width - margin * 2 - gapX) / 2;
-  const cardHeight = 174;
-  const firstRowY = height - 92 - 38 - cardHeight;
-
-  for (const [pageIndex, page] of skillPages.entries()) {
-    const subtitle = `${studentData['Passport ID'] || '-'}  |  V${version}`;
-    drawBrandHeader(page, 'დადასტურებული AI უნარები', subtitle, fonts);
-
-    const pageSkills = allSkills.slice(pageIndex * SKILLS_PER_PAGE, (pageIndex + 1) * SKILLS_PER_PAGE);
-    if (pageSkills.length === 0) {
-      drawMixedText(page, 'უნარების ჩანაწერი ჯერ არ არის დამატებული.', margin, height - 170, 12, fonts, 'regular', MUTED);
-    }
-
-    for (const [cardIndex, skill] of pageSkills.entries()) {
-      const column = cardIndex % 2;
-      const row = Math.floor(cardIndex / 2);
-      const x = margin + column * (cardWidth + gapX);
-      const y = firstRowY - row * (cardHeight + gapY);
-      const badgeId = skill['Badge/Stamp'];
-      if (badgeId && !badgeCache.has(badgeId)) {
-        badgeCache.set(badgeId, await embedBadge(pdfDoc, badgeId));
-      }
-      drawSkillCard(
-        page,
-        skill,
-        pageIndex * SKILLS_PER_PAGE + cardIndex,
-        x,
-        y,
-        cardWidth,
-        cardHeight,
-        fonts,
-        badgeId ? badgeCache.get(badgeId) : undefined,
-      );
-    }
-
-    drawFooter(page, verificationId, pageIndex + 2, skillPageCount + 1, fonts);
+  for (const page of pages.slice(1)) {
+    drawLine(page, `VERIFICATION ID: ${verificationId}`, {
+      x: x(VERIFICATION_FOOTER.rightX), y: y(VERIFICATION_FOOTER.y),
+      size: VERIFICATION_FOOTER.size, fonts, align: 'right', color: WHITE,
+    });
   }
 
-  const issuedDate = new Date(issuedAt);
-  pdfDoc.setTitle(`${coverTitle} - ${studentData['Passport ID'] || studentData['Student ID']}`);
-  pdfDoc.setAuthor('Business and Technology University');
-  pdfDoc.setSubject(verificationId);
-  pdfDoc.setKeywords(['BTU', 'AI Skills Passport', verificationId, studentData['Passport ID'] || '']);
-  pdfDoc.setCreationDate(issuedDate);
-  pdfDoc.setModificationDate(issuedDate);
+  doc.setTitle(`AI PASSPORT - ${passportId}`);
+  doc.setAuthor('BTU');
+  doc.setSubject(verificationId);
+  doc.setProducer('BTU AI Passport');
+  doc.setCreator('BTU AI Passport');
+  doc.setCreationDate(metadataDate);
+  doc.setModificationDate(metadataDate);
 
-  const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
-  return Buffer.from(pdfBytes);
+  return Buffer.from(await doc.save({ useObjectStreams: false }));
 }

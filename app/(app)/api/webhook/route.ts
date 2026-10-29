@@ -10,6 +10,24 @@ import { verifySheetsWebhookSignature } from '@/lib/sheetsWebhook';
 export const runtime = 'nodejs';
 
 const MAX_BODY_BYTES = 16 * 1024;
+const TRANSIENT_DATABASE_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'EAI_AGAIN',
+]);
+
+function isTransientDatabaseError(error: unknown, seen = new Set<unknown>()): boolean {
+  if (typeof error !== 'object' || error === null || seen.has(error)) return false;
+  seen.add(error);
+
+  const candidate = error as { code?: unknown; cause?: unknown; errors?: unknown };
+  if (typeof candidate.code === 'string' && TRANSIENT_DATABASE_CODES.has(candidate.code)) return true;
+  if (isTransientDatabaseError(candidate.cause, seen)) return true;
+  return Array.isArray(candidate.errors) && candidate.errors.some((nested) => isTransientDatabaseError(nested, seen));
+}
 
 export async function POST(request: Request) {
   const requestId = randomUUID();
@@ -31,6 +49,7 @@ export async function POST(request: Request) {
 
   try {
     const rawBody = await request.text();
+
     if (Buffer.byteLength(rawBody, 'utf8') > MAX_BODY_BYTES) {
       await log('VALIDATION', 'REJECTED', 'Request body exceeded the size limit.');
       return NextResponse.json({ success: false, requestId, error: 'Request body is too large.' }, { status: 413 });
@@ -61,6 +80,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, requestId, error: 'Invalid JSON.' }, { status: 400 });
     }
 
+    // The body contains student PII, so it is only logged outside production.
+    if (process.env.NODE_ENV !== 'production') console.log('Received payload:', body);
+
     const event = parseSheetsVerifiedSkillEvent(body);
     if (!event) {
       const candidate = typeof body === 'object' && body !== null ? (body as Record<string, unknown>).recordId : undefined;
@@ -85,7 +107,8 @@ export async function POST(request: Request) {
     await log('INGESTION', 'ACCEPTED', `Passport version ${result.version} issued; tx ${result.txHash}.`);
     return NextResponse.json({ success: true, requestId, ...result }, { status: 200 });
   } catch (error) {
-    const status = error instanceof SheetsIngestionError ? error.status : 500;
+    const transientDatabaseFailure = isTransientDatabaseError(error);
+    const status = error instanceof SheetsIngestionError ? error.status : transientDatabaseFailure ? 503 : 500;
     const stage = error instanceof SheetsIngestionError ? error.stage : 'INGESTION';
     const outcome = error instanceof SheetsIngestionError ? error.outcome : 'FAILED';
     const message = error instanceof Error
@@ -93,7 +116,9 @@ export async function POST(request: Request) {
       : 'Unknown ingestion failure.';
     const responseMessage = error instanceof SheetsIngestionError
       ? error.message
-      : 'Unexpected ingestion failure. Check the request ID in integration logs.';
+      : transientDatabaseFailure
+        ? 'Database connection temporarily unavailable. Retry this row.'
+        : 'Unexpected ingestion failure. Check the request ID in integration logs.';
 
     console.error(`[${requestId}] Google Sheets ingestion failed`, error);
     await log(stage, outcome, message);

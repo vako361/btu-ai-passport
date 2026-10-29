@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "bootstrap:admin": "tsx scripts/bootstrap-admin.ts"
+    "bootstrap:admin": "tsx scripts/bootstrap-admin.ts",
+    "test:pdf": "tsx scripts/test-pdf.ts",
+    "test:ingestion": "tsx scripts/test-ingestion.ts"
   },
   "dependencies": {
     "@payloadcms/db-postgres": "^3.91.0",
@@ -23,6 +25,7 @@
     "payload": "^3.91.0",
     "pdf-lib": "^1.17.1",
     "postcss": "^8.5.31",
+    "qrcode": "^1.5.4",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
@@ -36,6 +39,7 @@
     "@types/chai-as-promised": "^8.0.2",
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.20.5",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "chai": "^6.3.0",
