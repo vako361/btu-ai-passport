@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { PDFDocument, PDFPage, type PDFImage } from 'pdf-lib';
 import { generatePassportPDF } from '../lib/pdfGenerator';
-import { readPassportPdf, storePassportPdf } from '../lib/passportStorage';
+import { readOrCreatePassportPdf, readPassportPdf, storePassportPdf } from '../lib/passportStorage';
 
 const VERIFICATION_ID = 'VER-TEST0123456789ABCDEF01';
 const EXPECTED_PAGES = 7;
@@ -135,6 +135,7 @@ async function checkSystemTempStorage(pdf: Buffer) {
 async function main() {
   const first = await generatePassportPDF(student, skills, VERIFICATION_ID);
   const second = await generatePassportPDF(student, skills, VERIFICATION_ID);
+  const identicalRendersMatch = first.equals(second);
 
   const samplePath = path.join(os.tmpdir(), 'passport-sample.pdf');
   await writeFile(samplePath, first);
@@ -151,10 +152,21 @@ async function main() {
   process.env.PASSPORT_STORAGE_DIR = storageDir;
   process.env.PASSPORT_STORAGE_KEY = 'ab'.repeat(32);
   let storedBytesMatch = false;
+  let missingFileRecoveryWorks = false;
   try {
     const hash = `0x${createHash('sha256').update(first).digest('hex')}`;
     await storePassportPdf(VERIFICATION_ID, first, hash);
     storedBytesMatch = (await readPassportPdf(VERIFICATION_ID, hash)).equals(first);
+
+    let regenerateCalls = 0;
+    await unlink(path.join(storageDir, `${VERIFICATION_ID}.pdf.enc`));
+    const recovered = await readOrCreatePassportPdf(VERIFICATION_ID, hash, async () => {
+      regenerateCalls += 1;
+      return first;
+    });
+    missingFileRecoveryWorks = recovered.equals(first)
+      && (await readPassportPdf(VERIFICATION_ID, hash)).equals(first)
+      && regenerateCalls === 1;
   } finally {
     await rm(storageDir, { recursive: true, force: true });
     if (previousStorageDir === undefined) delete process.env.PASSPORT_STORAGE_DIR;
@@ -171,7 +183,9 @@ async function main() {
       ok: creationDate?.getTime() === secondCreationDate?.getTime() && creationDate?.toISOString() === student['Issued At'],
       detail: `first=${creationDate?.toISOString()} second=${secondCreationDate?.toISOString()}`,
     },
+    { name: 'identical version inputs regenerate identical PDF bytes', ok: identicalRendersMatch, detail: `bytes=${first.length}` },
     { name: 'stored PDF bytes match issued bytes', ok: storedBytesMatch, detail: `bytes=${first.length}` },
+    { name: 'missing encrypted PDF is regenerated and stored', ok: missingFileRecoveryWorks, detail: 'hash-verified recovery' },
     { name: 'storage works when PASSPORT_STORAGE_DIR is the system temp dir', ok: await checkSystemTempStorage(first), detail: 'tmpdir/passports' },
     { name: 'official badges only, with cached aliases', ok: await checkOfficialBadges(), detail: '3 official PNGs' },
   ];

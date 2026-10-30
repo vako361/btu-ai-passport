@@ -28,6 +28,7 @@ nextConfig.serverExternalPackages = [
 // The PDF generator reads these files by computed path, which file tracing cannot see.
 nextConfig.outputFileTracingIncludes = {
     '/api/webhook': ['./assets/**/*'],
+  '/api/passports/[verificationId]': ['./assets/**/*'],
 };
 
 export default nextConfig;

@@ -94,3 +94,21 @@ export async function readPassportPdf(verificationId: string, expectedHash: stri
   }
   return pdf;
 }
+
+export async function readOrCreatePassportPdf(
+  verificationId: string,
+  expectedHash: string,
+  createPdf: () => Promise<Buffer>,
+) {
+  try {
+    return await readPassportPdf(verificationId, expectedHash);
+  } catch (error) {
+    if (typeof error !== 'object' || error === null || !('code' in error) || error.code !== 'ENOENT') {
+      throw error;
+    }
+  }
+
+  const pdf = await createPdf();
+  await storePassportPdf(verificationId, pdf, expectedHash);
+  return pdf;
+}
