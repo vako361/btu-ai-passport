@@ -1,5 +1,5 @@
 import type { CollectionConfig } from 'payload';
-import { isConfiguredPayloadAdmin } from '../lib/payloadAccess';
+import { isAdmin } from '../lib/access';
 
 export const IntegrationLogs: CollectionConfig = {
   slug: 'integration-logs',
@@ -8,10 +8,9 @@ export const IntegrationLogs: CollectionConfig = {
     defaultColumns: ['requestId', 'recordId', 'stage', 'outcome', 'loggedAt'],
   },
   access: {
-    admin: isConfiguredPayloadAdmin,
     create: () => false,
     delete: () => false,
-    read: isConfiguredPayloadAdmin,
+    read: isAdmin,
     update: () => false,
   },
   fields: [

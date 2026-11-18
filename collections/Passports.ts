@@ -1,5 +1,5 @@
 import type { CollectionConfig } from 'payload';
-import { isConfiguredPayloadAdmin } from '../lib/payloadAccess';
+import { canWrite, readOwnPassport } from '../lib/access';
 
 function relationId(value: unknown): string | undefined {
   if (typeof value === 'string' || typeof value === 'number') return String(value);
@@ -17,11 +17,10 @@ export const Passports: CollectionConfig = {
     defaultColumns: ['passportId', 'student', 'firstIssuedAt', 'latestVersion'],
   },
   access: {
-    admin: isConfiguredPayloadAdmin,
-    create: isConfiguredPayloadAdmin,
-    delete: isConfiguredPayloadAdmin,
-    read: isConfiguredPayloadAdmin,
-    update: isConfiguredPayloadAdmin,
+    create: canWrite,
+    delete: canWrite,
+    read: readOwnPassport,
+    update: canWrite,
   },
   hooks: {
     beforeChange: [({ data, operation, originalDoc }) => {

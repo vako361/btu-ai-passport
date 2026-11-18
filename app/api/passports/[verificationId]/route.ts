@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getPayload } from 'payload';
 import config from '@payload-config';
-import { generatePassportPDF } from '@/lib/pdfGenerator';
+import { getAppEnv } from '@/lib/env';
+import { renderPassportPdf, skillsFromSnapshot } from '@/lib/issuance/pdf';
+import { derivePassportId } from '@/lib/issuance/utils';
 import { readOrCreatePassportPdf } from '@/lib/passportStorage';
 
 export const runtime = 'nodejs';
@@ -41,35 +43,20 @@ export async function GET(
         : null;
       if (!passport) throw new Error('Passport relation is unavailable for PDF regeneration.');
 
-      const passportId = passport.passportId || (
-        passport.studentId.startsWith('BTU-AI-')
-          ? passport.studentId
-          : `BTU-AI-${passport.studentId.replace(/^BTU-?/i, '')}`
-      );
-      const skills = (version.skillsSnapshot ?? []).map((skill) => ({
-        recordId: skill.recordId,
-        skillCode: skill.skillCode,
-        skillName: skill.skillName,
-        badgeId: skill.badgeId,
-        earnedAt: skill.earnedAt,
-        description: skill.description ?? '',
-        'Skill Code': skill.skillCode,
-        'Skill Name': skill.skillName,
-        'Date Earned': skill.earnedAt,
-        'Skill Description': skill.description ?? '',
-        'Badge/Stamp': skill.badgeId,
-        'Record ID': skill.recordId,
-      }));
-
-      return generatePassportPDF({
-        'Student ID': passport.studentId,
-        'First Name': passport.firstName,
-        'Last Name': passport.lastName,
-        'Passport ID': passportId,
-        'First Issued At': passport.firstIssuedAt ?? version.issuedAt,
-        'Passport Version': version.version,
-        'Issued At': version.issuedAt,
-      }, skills, verificationId);
+      return renderPassportPdf({
+        holder: {
+          studentId: passport.studentId,
+          firstName: passport.firstName,
+          lastName: passport.lastName,
+          passportId: passport.passportId || derivePassportId(passport.studentId),
+          firstIssuedAt: passport.firstIssuedAt ?? version.issuedAt,
+        },
+        version: version.version,
+        issuedAt: version.issuedAt,
+        verificationId,
+        skills: skillsFromSnapshot(version.skillsSnapshot),
+        verifyBaseUrl: getAppEnv().appUrl,
+      });
     });
     const filename = `${verificationId}-v${version.version}.pdf`;
     return new Response(new Uint8Array(pdf), {

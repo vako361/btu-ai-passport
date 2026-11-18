@@ -31,47 +31,14 @@ export interface SheetsVerifiedSkillEvent {
   earnedAt: string;
   status: VerifiedSkillStatus;
   badgeId?: string | null;
-  // ⚠️ დაემატა ეს ველები, რომ გზაში არ დაიკარგოს:
   firstName?: string | null;
   lastName?: string | null;
   email?: string | null;
   skillName?: string | null;
 }
 
-export type PassportInput = PassportStudentData & PassportSkillData & {
-  "Record ID": string;
-  status: VerifiedSkillStatus;
-};
-
-export interface PassportRegistration {
-  passportId: string;
-  verificationId: string;
-  docHashHex: string;
-  version: number;
-  prevVerificationId: string;
-}
-
-export function isPassportInput(value: unknown): value is PassportInput {
-  if (typeof value !== "object" || value === null) return false;
-
-  const record = value as Record<string, unknown>;
-
-  return (
-    typeof record["Record ID"] === "string" &&
-    record["Record ID"].trim().length > 0 &&
-    typeof record["Student ID"] === "string" &&
-    typeof record["First Name"] === "string" &&
-    typeof record["Skill Name"] === "string" &&
-    isVerifiedSkillStatus(record.status)
-  );
-}
-
 export function isVerifiedSkillStatus(value: unknown): value is VerifiedSkillStatus {
   return VERIFIED_SKILL_STATUSES.some((status) => status === value);
-}
-
-export function isPassportEligibleStatus(value: unknown): value is 'CONFIRMED' {
-  return value === 'CONFIRMED';
 }
 
 export function parseSheetsVerifiedSkillEvent(value: unknown): SheetsVerifiedSkillEvent | null {
@@ -84,7 +51,6 @@ export function parseSheetsVerifiedSkillEvent(value: unknown): SheetsVerifiedSki
   const earnedAt = stringValue(record.earnedAt);
   const status = stringValue(record.status)?.toUpperCase();
 
-  // ⚠️ ამოვიღოთ სახელი, გვარი და იმეილიც შემოსული JSON-იდან:
   const firstName = stringValue(record.firstName);
   const lastName = stringValue(record.lastName);
   const email = stringValue(record.email);

@@ -55,7 +55,7 @@ export default function Home() {
             <div className="flex-1 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-gray-200 px-2 sm:px-6 pb-8 md:pb-0">
               <h2 className="text-[23px] font-extrabold mb-3 text-black text-center">საკუთარი პასპორტი</h2>
               <p className="mb-5 max-w-87.5 text-center text-sm leading-relaxed text-gray-600">შედით BTU-ის ელფოსტით, რომ ნახოთ და ჩამოტვირთოთ თქვენი უახლესი ვერსია.</p>
-              <Link href="/student" className="flex h-12 w-full max-w-87.5 items-center justify-center rounded-lg bg-[#FE017E] px-6 font-bold text-white shadow-sm transition-colors hover:bg-[#d6006a]">
+              <Link href="/login" className="flex h-12 w-full max-w-87.5 items-center justify-center rounded-lg bg-[#FE017E] px-6 font-bold text-white shadow-sm transition-colors hover:bg-[#d6006a]">
                 სტუდენტის შესვლა
               </Link>
             </div>

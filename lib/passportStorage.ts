@@ -2,14 +2,15 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 import { chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { getStorageEnv } from './env';
 
 const FILE_MAGIC = Buffer.from('BTUPDF01');
 
 function storageDirectory() {
-  const configuredDirectory = process.env.PASSPORT_STORAGE_DIR;
+  const { directory: configuredDirectory, isVercel } = getStorageEnv();
   // Vercel's filesystem is read-only except the temp dir.
   if (!configuredDirectory) {
-    return process.env.VERCEL ? path.join(os.tmpdir(), 'passports') : path.join(process.cwd(), 'storage', 'passports');
+    return isVercel ? path.join(os.tmpdir(), 'passports') : path.join(process.cwd(), 'storage', 'passports');
   }
   const resolved = path.resolve(/* turbopackIgnore: true */ configuredDirectory);
   // The temp dir itself is not ours to chmod, so keep files in a subfolder.
@@ -17,11 +18,7 @@ function storageDirectory() {
 }
 
 function encryptionKey() {
-  const value = process.env.PASSPORT_STORAGE_KEY;
-  if (!value || !/^[0-9a-f]{64}$/i.test(value)) {
-    throw new Error('PASSPORT_STORAGE_KEY must be a 32-byte hexadecimal key.');
-  }
-  return Buffer.from(value, 'hex');
+  return getStorageEnv().encryptionKey;
 }
 
 function filePath(verificationId: string) {
@@ -85,6 +82,13 @@ export async function storePassportPdf(verificationId: string, pdf: Buffer, expe
   } finally {
     await unlink(temporary).catch(() => undefined);
   }
+}
+
+export async function deletePassportPdf(verificationId: string) {
+  await unlink(filePath(verificationId)).catch((error: unknown) => {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') return;
+    throw error;
+  });
 }
 
 export async function readPassportPdf(verificationId: string, expectedHash: string) {

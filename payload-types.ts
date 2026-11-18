@@ -75,6 +75,7 @@ export interface Config {
     passports: Passport;
     'passport-versions': PassportVersion;
     'integration-logs': IntegrationLog;
+    'ledger-entries': LedgerEntry;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -90,6 +91,7 @@ export interface Config {
     passports: PassportsSelect<false> | PassportsSelect<true>;
     'passport-versions': PassportVersionsSelect<false> | PassportVersionsSelect<true>;
     'integration-logs': IntegrationLogsSelect<false> | IntegrationLogsSelect<true>;
+    'ledger-entries': LedgerEntriesSelect<false> | LedgerEntriesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -135,6 +137,15 @@ export interface UserAuthOperations {
  */
 export interface User {
   id: number;
+  role: 'admin' | 'student';
+  /**
+   * Student record this account belongs to.
+   */
+  student?: (number | null) | Student;
+  /**
+   * Demo accounts are read-only in the CMS and their data resets automatically.
+   */
+  isDemo?: boolean | null;
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -157,6 +168,19 @@ export interface User {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "students".
+ */
+export interface Student {
+  id: number;
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "media".
  */
 export interface Media {
@@ -173,19 +197,6 @@ export interface Media {
   height?: number | null;
   focalX?: number | null;
   focalY?: number | null;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "students".
- */
-export interface Student {
-  id: number;
-  studentId: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  updatedAt: string;
-  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -290,6 +301,28 @@ export interface IntegrationLog {
   createdAt: string;
 }
 /**
+ * Signed, hash-chained credential registrations used when LEDGER_MODE=demo.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ledger-entries".
+ */
+export interface LedgerEntry {
+  id: number;
+  verificationId: string;
+  passportId: string;
+  documentHash: string;
+  version: number;
+  previousVerificationId?: string | null;
+  previousEntryHash: string;
+  registeredAt: string;
+  entryHash: string;
+  signature: string;
+  issuerAddress: string;
+  isLatest?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
@@ -344,6 +377,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'integration-logs';
         value: number | IntegrationLog;
+      } | null)
+    | ({
+        relationTo: 'ledger-entries';
+        value: number | LedgerEntry;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -392,6 +429,9 @@ export interface PayloadMigration {
  * via the `definition` "users_select".
  */
 export interface UsersSelect<T extends boolean = true> {
+  role?: T;
+  student?: T;
+  isDemo?: T;
   updatedAt?: T;
   createdAt?: T;
   email?: T;
@@ -534,6 +574,25 @@ export interface IntegrationLogsSelect<T extends boolean = true> {
   outcome?: T;
   message?: T;
   loggedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ledger-entries_select".
+ */
+export interface LedgerEntriesSelect<T extends boolean = true> {
+  verificationId?: T;
+  passportId?: T;
+  documentHash?: T;
+  version?: T;
+  previousVerificationId?: T;
+  previousEntryHash?: T;
+  registeredAt?: T;
+  entryHash?: T;
+  signature?: T;
+  issuerAddress?: T;
+  isLatest?: T;
   updatedAt?: T;
   createdAt?: T;
 }

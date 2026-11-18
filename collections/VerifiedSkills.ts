@@ -1,5 +1,5 @@
 import type { CollectionConfig } from 'payload';
-import { isConfiguredPayloadAdmin } from '../lib/payloadAccess';
+import { canWrite, readOwnVerifiedSkill } from '../lib/access';
 
 export const VerifiedSkills: CollectionConfig = {
   slug: 'verified-skills',
@@ -8,11 +8,10 @@ export const VerifiedSkills: CollectionConfig = {
     defaultColumns: ['recordId', 'student', 'skill', 'status', 'earnedAt'],
   },
   access: {
-    admin: isConfiguredPayloadAdmin,
-    create: isConfiguredPayloadAdmin,
-    delete: isConfiguredPayloadAdmin,
-    read: isConfiguredPayloadAdmin,
-    update: isConfiguredPayloadAdmin,
+    create: canWrite,
+    delete: canWrite,
+    read: readOwnVerifiedSkill,
+    update: canWrite,
   },
   fields: [
     { name: 'recordId', type: 'text', required: true, unique: true },

@@ -1,5 +1,5 @@
 import type { CollectionConfig } from 'payload';
-import { isConfiguredPayloadAdmin } from '../lib/payloadAccess';
+import { canWrite, readOwnStudent } from '../lib/access';
 
 export const Students: CollectionConfig = {
   slug: 'students',
@@ -8,11 +8,10 @@ export const Students: CollectionConfig = {
     defaultColumns: ['studentId', 'firstName', 'lastName', 'email'],
   },
   access: {
-    admin: isConfiguredPayloadAdmin,
-    create: isConfiguredPayloadAdmin,
-    delete: isConfiguredPayloadAdmin,
-    read: isConfiguredPayloadAdmin,
-    update: isConfiguredPayloadAdmin,
+    create: canWrite,
+    delete: canWrite,
+    read: readOwnStudent,
+    update: canWrite,
   },
   hooks: {
     beforeChange: [({ data, operation, originalDoc }) => {

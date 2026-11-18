@@ -13,54 +13,24 @@ import { VerifiedSkills } from "./collections/VerifiedSkills";
 import { Passports } from "./collections/Passports";
 import { PassportVersions } from "./collections/PassportVersions";
 import { IntegrationLogs } from "./collections/IntegrationLogs";
+import { LedgerEntries } from "./collections/LedgerEntries";
+import { getAppEnv, getCoreEnv } from "./lib/env";
 
 const filename = fileURLToPath(import.meta.url);
 const dirname = path.dirname(filename);
 
-function getDatabaseConnectionString() {
-  // ამოწმებს ცვლადის სამივე შესაძლო სახელს
-  const connectionString =
-    process.env.DATABASE_URL ||
-    process.env.DATABASE_URI ||
-    process.env.POSTGRES_URL;
-
-  if (!connectionString) {
-    console.error("❌ ERROR: No database connection string found in environment variables!");
-    return "";
-  }
-
-  return connectionString;
-}
-
-const appUrl =
-  process.env.PAYLOAD_PUBLIC_SERVER_URL ||
-  process.env.NEXT_PUBLIC_APP_URL ||
-  "https://btu-ai-passport-gamma.vercel.app";
+const env = { ...getAppEnv(), ...getCoreEnv() };
 
 export default buildConfig({
-  serverURL: appUrl,
+  serverURL: env.appUrl,
   admin: {
     user: Users.slug,
     importMap: {
       baseDir: path.resolve(dirname),
     },
   },
-  cors: [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://btu-ai-passport-gamma.vercel.app",
-    "https://*.vercel.app",
-    "https://*.ngrok-free.dev",
-    "https://*.lhr.life",
-  ],
-  csrf: [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://btu-ai-passport-gamma.vercel.app",
-    "https://*.vercel.app",
-    "https://*.ngrok-free.dev",
-    "https://*.lhr.life",
-  ],
+  cors: env.trustedOrigins,
+  csrf: env.trustedOrigins,
   collections: [
     Users,
     Media,
@@ -70,16 +40,17 @@ export default buildConfig({
     Passports,
     PassportVersions,
     IntegrationLogs,
+    LedgerEntries,
   ],
   editor: lexicalEditor(),
-  secret: process.env.PAYLOAD_SECRET || (process.env.NODE_ENV === "production" ? "" : "dev-only-payload-secret"),
+  secret: env.payloadSecret,
   typescript: {
     outputFile: path.resolve(dirname, "payload-types.ts"),
   },
   db: postgresAdapter({
     push: false,
     pool: {
-      connectionString: getDatabaseConnectionString(),
+      connectionString: env.databaseUrl,
       max: 5,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 15_000,

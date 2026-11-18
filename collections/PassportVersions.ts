@@ -1,5 +1,5 @@
 import type { CollectionConfig } from 'payload';
-import { isConfiguredPayloadAdmin } from '../lib/payloadAccess';
+import { canWrite, readOwnIssuedVersion } from '../lib/access';
 
 export const PassportVersions: CollectionConfig = {
   slug: 'passport-versions',
@@ -8,10 +8,9 @@ export const PassportVersions: CollectionConfig = {
     defaultColumns: ['passport', 'version', 'verificationId', 'issuedAt'],
   },
   access: {
-    admin: isConfiguredPayloadAdmin,
-    create: isConfiguredPayloadAdmin,
+    create: canWrite,
     delete: () => false,
-    read: isConfiguredPayloadAdmin,
+    read: readOwnIssuedVersion,
     update: () => false,
   },
   indexes: [{ fields: ['passport', 'version'], unique: true }],

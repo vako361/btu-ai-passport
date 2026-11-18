@@ -3,7 +3,7 @@
 import { useState, Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 // ტიპების განსაზღვრა შედეგისთვის (აშორებს any-ს)
 interface VerificationResult {
@@ -27,6 +27,7 @@ export default function VerifyPage() {
 
 function VerifyPageContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [verificationId, setVerificationId] = useState(searchParams.get('code') || '');
   const [result, setResult] = useState<VerificationResult | null>(null);
@@ -104,11 +105,10 @@ function VerifyPageContent() {
 
   const handleIdSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!verificationId) return;
-    setFile(null); // ID-ს გაგზავნისას ვასუფთავებთ ფაილს
-    const formData = new FormData();
-    formData.append('verificationId', verificationId);
-    runVerification(formData, 'id');
+    const id = verificationId.trim();
+    if (!id) return;
+    setLoadingType('id');
+    router.push(`/verify/${encodeURIComponent(id)}`);
   };
 
   const closeModal = () => {
@@ -123,7 +123,7 @@ function VerifyPageContent() {
       <div className="absolute inset-0 bg-[url('/images/background.png')] bg-cover bg-no-repeat bg-center opacity-10 -z-10 pointer-events-none"></div>
       
       {/* Header */}
-      <header className="w-full bg-[#FE017E] text-white py-[22px] px-8 flex items-center shadow-md">
+      <header className="w-full bg-[#FE017E] text-white py-5.5 px-8 flex items-center shadow-md">
         <div className="flex items-center gap-4">
           <Link href="/" className="relative w-20 h-20 flex items-center justify-center cursor-pointer hover:scale-105 transition-transform">
             <Image 
@@ -136,7 +136,7 @@ function VerifyPageContent() {
           </Link>
           
           <div className="flex flex-col justify-center cursor-default">
-            <div className="text-[33px] leading-none mb-[3px] flex items-center">
+            <div className="text-[33px] leading-none mb-0.75 flex items-center">
               <span className="font-extrabold tracking-wide">AI SKILLS</span>
             </div>
             <div className="text-300 text-[30px] font-light tracking-[0.08em] leading-none mt-1">
@@ -147,15 +147,15 @@ function VerifyPageContent() {
       </header>
 
       {/* მთავარი კონტენტი */}
-      <main className="flex-1 w-full max-w-[1000px] mx-auto pt-8 pb-12 px-6 flex flex-col justify-center mt-[40px]">
+      <main className="flex-1 w-full max-w-250 mx-auto pt-8 pb-12 px-6 flex flex-col justify-center mt-10">
         
-        <div className="relative bg-white/[0.7] backdrop-blur-[2px] w-full rounded-[24px] shadow-md px-10 py-16 flex flex-col items-center">
+        <div className="relative bg-white/70 backdrop-blur-[2px] w-full rounded-3xl shadow-md px-10 py-16 flex flex-col items-center">
           
           {/* სტიკერები */}
-          <Image src="/images/latest-skillset.png" alt="Latest AI Skillset" width={220} height={150} className="hidden lg:block absolute -top-0 -left-12 w-[220px] -rotate-12 drop-shadow-lg z-10 pointer-events-none" />
-          <Image src="/images/issued-by.png" alt="Issued by" width={200} height={150} className="hidden lg:block absolute top-[50%] left-[-100px] w-[200px] -rotate-12 drop-shadow-lg z-10 pointer-events-none" />
-          <Image src="/images/blue-triangle.png" alt="AI Skills Digital Passport" width={160} height={120} className="hidden lg:block absolute top-[25%] -right-16 w-[160px] rotate-12 drop-shadow-lg z-10 pointer-events-none" />
-          <Image src="/images/blockchain.png" alt="Blockchain Verified" width={180} height={150} className="hidden lg:block absolute bottom-12 -right-30 w-[180px] -rotate-6 drop-shadow-lg z-10 pointer-events-none" />
+          <Image src="/images/latest-skillset.png" alt="Latest AI Skillset" width={220} height={150} className="hidden lg:block absolute top-0 -left-12 w-55 -rotate-12 drop-shadow-lg z-10 pointer-events-none" />
+          <Image src="/images/issued-by.png" alt="Issued by" width={200} height={150} className="hidden lg:block absolute top-[50%] -left-25 w-50 -rotate-12 drop-shadow-lg z-10 pointer-events-none" />
+          <Image src="/images/blue-triangle.png" alt="AI Skills Digital Passport" width={160} height={120} className="hidden lg:block absolute top-[25%] -right-16 w-40 rotate-12 drop-shadow-lg z-10 pointer-events-none" />
+          <Image src="/images/blockchain.png" alt="Blockchain Verified" width={180} height={150} className="hidden lg:block absolute bottom-12 -right-30 w-45 -rotate-6 drop-shadow-lg z-10 pointer-events-none" />
 
           {/* სათაური */}
           <div className="text-center mb-8">
@@ -163,7 +163,7 @@ function VerifyPageContent() {
             <h3 className="text-[18px] font-extrabold text-[#FE017E] mt-2">მარტივი ვერიფიკაცია კოდით</h3>
           </div>
 
-          <div className="flex flex-col items-center w-full max-w-[700px] z-20">
+          <div className="flex flex-col items-center w-full max-w-175 z-20">
             
             {/* 1. კოდით შემოწმების ფორმა */}
             <form onSubmit={handleIdSubmit} className="flex flex-col md:flex-row w-full gap-4 mb-12 items-end">
@@ -174,7 +174,7 @@ function VerifyPageContent() {
                   placeholder="მაგ: VER12345"
                   value={verificationId}
                   onChange={(e) => { setVerificationId(e.target.value); setFile(null); }}
-                  className="w-full border border-gray-200 rounded-lg px-4 h-[48px] text-[15px] outline-none focus:border-[#FE017E] focus:ring-1 focus:ring-[#FE017E] transition-all font-medium bg-white"
+                  className="w-full border border-gray-200 rounded-lg px-4 h-12 text-[15px] outline-none focus:border-[#FE017E] focus:ring-1 focus:ring-[#FE017E] transition-all font-medium bg-white"
                   disabled={loadingType !== null}
                 />
               </div>
@@ -182,7 +182,7 @@ function VerifyPageContent() {
                 <button 
                   type="submit" 
                   disabled={loadingType !== null || !verificationId}
-                  className="w-full md:w-auto bg-[#FE017E] cursor-pointer hover:bg-[#d6006a] hover:scale-105 disabled:bg-gray-300 disabled:hover:scale-100 disabled:cursor-not-allowed text-white text-[16px] font-bold h-[48px] px-10 rounded-lg transition-all duration-300 flex items-center justify-center shadow-sm"
+                  className="w-full md:w-auto bg-[#FE017E] cursor-pointer hover:bg-[#d6006a] hover:scale-105 disabled:bg-gray-300 disabled:hover:scale-100 disabled:cursor-not-allowed text-white text-[16px] font-bold h-12 px-10 rounded-lg transition-all duration-300 flex items-center justify-center shadow-sm"
                 >
                   {loadingType === 'id' ? 'მოწმდება...' : 'შემოწმება'}
                 </button>
@@ -197,7 +197,7 @@ function VerifyPageContent() {
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                className={`w-full border-2 border-dashed rounded-2xl h-[240px] flex flex-col items-center justify-center cursor-pointer transition-all relative group shadow-sm ${
+                className={`w-full border-2 border-dashed rounded-2xl h-60 flex flex-col items-center justify-center cursor-pointer transition-all relative group shadow-sm ${
                   isDragging ? 'bg-[#FAD1E3] border-[#FE017E]' : 'bg-[#FCF2F6]/60 hover:bg-[#FCF2F6] border-[#FAD1E3]'
                 }`}
               >
@@ -231,8 +231,8 @@ function VerifyPageContent() {
 
       {/* Footer */}
       <footer className="w-full bg-[#1A1A1C] py-12 px-6 mt-auto">
-        <div className="w-full max-w-[1000px] mx-auto flex flex-col md:flex-row items-center md:items-start gap-8">
-          <div className="relative w-[180px] h-[115px] shrink-0">
+        <div className="w-full max-w-250 mx-auto flex flex-col md:flex-row items-center md:items-start gap-8">
+          <div className="relative w-45 h-28.75 shrink-0">
             <Image 
               src="https://btu.edu.ge/wp-content/uploads/2021/07/logo_w-300x193.png" 
               alt="BTU Logo" 
@@ -252,7 +252,7 @@ function VerifyPageContent() {
       {/* Modal - შედეგის ფანჯარა */}
       {result && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-[2px] transition-opacity">
-          <div className="bg-white rounded-[24px] p-8 max-w-[450px] w-full relative shadow-2xl flex flex-col items-center text-center animate-in fade-in zoom-in duration-200">
+          <div className="bg-white rounded-3xl p-8 max-w-112.5 w-full relative shadow-2xl flex flex-col items-center text-center animate-in fade-in zoom-in duration-200">
             
             <button 
               onClick={closeModal}

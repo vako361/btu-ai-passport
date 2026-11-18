@@ -466,10 +466,16 @@ async function drawTable(
   }
 }
 
+export interface PassportPdfOptions {
+  // Origin embedded in the QR code; the QR is omitted when unset.
+  verifyBaseUrl?: string;
+}
+
 export async function generatePassportPDF(
   studentData: PassportStudentData,
   allSkills: DrawSkill[],
   verificationId: string,
+  options: PassportPdfOptions = {},
 ): Promise<Buffer> {
   const template = await PDFDocument.load(await fs.readFile(path.join(process.cwd(), 'assets', 'Passport_Blank.pdf')));
   if (template.getPageCount() < 4) throw new Error('Passport_Blank.pdf must contain 4 pages.');
@@ -509,9 +515,9 @@ export async function generatePassportPDF(
   const rawId = studentData['Passport ID'] || studentData['Student ID'] || '001';
   const passportId = rawId.startsWith('BTU-AI-') ? rawId : `BTU-AI-${rawId}`;
 
-  const baseUrl = process.env.PUBLIC_BASE_URL?.replace(/\/$/, '');
+  const baseUrl = options.verifyBaseUrl?.replace(/\/$/, '');
   const qrImage = baseUrl
-    ? await doc.embedPng(await QRCode.toBuffer(`${baseUrl}/verify?code=${encodeURIComponent(verificationId)}`, { margin: 1, width: 240 }))
+    ? await doc.embedPng(await QRCode.toBuffer(`${baseUrl}/verify/${encodeURIComponent(verificationId)}`, { margin: 1, width: 240 }))
     : null;
   const drawQr = (page: PDFPage, pageIndex: number, at: { x: number; y: number }) => {
     if (qrImage) drawImageWithLogging(page, pageIndex, qrImage, { x: x(at.x), y: y(at.y), width: QR.sizePt, height: QR.sizePt });

@@ -1,8 +1,18 @@
 import assert from 'node:assert/strict';
 import type { Payload } from 'payload';
-import { registerAndFinalizePassportVersion } from '../lib/passportService';
+import { registerAndFinalizePassportVersion } from '../lib/issuance/finalize';
+import type { LedgerProvider } from '../lib/ledger';
 import { processSheetsVerifiedSkill, SheetsIngestionError } from '../lib/sheetsIngestion';
 import { parseSheetsVerifiedSkillEvent, type SheetsVerifiedSkillEvent } from '../lib/passportTypes';
+
+const stubLedger: LedgerProvider = {
+  mode: 'demo',
+  label: 'Stub ledger',
+  issuerAddress: () => '0x0000000000000000000000000000000000000001',
+  transactionUrl: () => null,
+  register: async () => { throw new Error('Ledger must not be reached in this scenario'); },
+  lookup: async () => ({ exists: false }),
+};
 
 const event: SheetsVerifiedSkillEvent = {
   recordId: 'ROW-TEST-1',
@@ -86,7 +96,7 @@ async function assertBadgeIdReplacesPlaceholderAndReissuesOnlyOnChange() {
   const originalConsoleError = console.error;
   console.error = () => undefined;
   try {
-    await assert.rejects(processSheetsVerifiedSkill(processedRecordPayload('BDG-SKL-001', changedOperations), confirmed));
+    await assert.rejects(processSheetsVerifiedSkill(processedRecordPayload('BDG-SKL-001', changedOperations), confirmed, { ledger: stubLedger }));
   } finally {
     console.error = originalConsoleError;
   }

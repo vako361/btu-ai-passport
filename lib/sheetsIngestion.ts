@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
 import type { Payload } from 'payload';
 import type { Skill, Student } from '../payload-types';
-import { getIssuerAddress } from './blockchain';
-import { generatePassportPDF } from './pdfGenerator';
-import { preparePassportRegistration, registerAndFinalizePassportVersion, registerPassportVersionOnChain } from './passportService';
-import { readPassportPdf, storePassportPdf } from './passportStorage';
-import type { PassportInput, SheetsVerifiedSkillEvent } from './passportTypes';
+import { getAppEnv } from './env';
+import { issuePassportVersion } from './issuance/issuePassportVersion';
+import { dateOnly, passportDownloadPath, relationId } from './issuance/utils';
+import { getLedger, type LedgerProvider } from './ledger';
+import type { SheetsVerifiedSkillEvent } from './passportTypes';
 
 const PROCESSING_LEASE_MS = 10 * 60 * 1000;
 
@@ -33,25 +33,8 @@ type IngestionResult =
       downloadPath: string;
     };
 
-function relationId(value: unknown): string | undefined {
-  if (typeof value === 'string' || typeof value === 'number') return String(value);
-  if (typeof value !== 'object' || value === null) return undefined;
-
-  const relation = value as { id?: unknown; value?: unknown };
-  const id = relation.id ?? relation.value;
-  return typeof id === 'string' || typeof id === 'number' ? String(id) : undefined;
-}
-
-function isPopulatedSkill(value: unknown): value is Skill {
-  return typeof value === 'object' && value !== null && 'skillCode' in value && 'name' in value;
-}
-
-function dateOnly(value: string) {
-  return new Date(value).toISOString().slice(0, 10);
-}
-
-function verificationIdForRecord(recordId: string) {
-  return `VER-${createHash('sha256').update(recordId).digest('hex').slice(0, 24).toUpperCase()}`;
+export interface SheetsIngestionOptions {
+  ledger?: LedgerProvider;
 }
 
 function badgeCorrectionRecordId(recordId: string, badgeId: string) {
@@ -83,6 +66,7 @@ async function issuedBadgeIdForRecord(payload: Payload, recordId: string) {
 export async function processSheetsVerifiedSkill(
   payload: Payload,
   event: SheetsVerifiedSkillEvent,
+  options: SheetsIngestionOptions = {},
 ): Promise<IngestionResult> {
   const [studentResult, skillResult, existingResult] = await Promise.all([
     payload.find({
@@ -162,7 +146,7 @@ export async function processSheetsVerifiedSkill(
     });
   }
 
-  let issuanceEvent = event;
+  let issuanceRecordId = event.recordId;
 
   if (existing) {
     if (existing.processingStatus === 'PROCESSED') {
@@ -176,10 +160,7 @@ export async function processSheetsVerifiedSkill(
       if (issuedBadgeId?.trim().toUpperCase() === requestedBadgeId.toUpperCase()) {
         return { kind: 'duplicate', message: 'Record ID has already been processed.' };
       }
-      issuanceEvent = {
-        ...event,
-        recordId: badgeCorrectionRecordId(event.recordId, requestedBadgeId),
-      };
+      issuanceRecordId = badgeCorrectionRecordId(event.recordId, requestedBadgeId);
     }
     if (existing.processingStatus === 'QUEUED') {
       return { kind: 'duplicate', message: 'Record ID is already being processed.' };
@@ -244,10 +225,25 @@ export async function processSheetsVerifiedSkill(
       });
 
   try {
-        return await issuePassportVersion(payload, issuanceEvent, resolvedStudent, skill, verifiedSkill.id);
+    const issued = await issuePassportVersion({
+      payload,
+      ledger: options.ledger ?? getLedger(payload),
+      student: resolvedStudent,
+      recordId: issuanceRecordId,
+      verifiedSkillId: verifiedSkill.id,
+      verifyBaseUrl: getAppEnv().appUrl,
+    });
+    return {
+      kind: 'processed',
+      passportId: issued.passportId,
+      verificationId: issued.verificationId,
+      version: issued.version,
+      txHash: issued.transactionHash,
+      downloadPath: passportDownloadPath(issued.verificationId),
+    };
   } catch (error) {
     console.error(
-      `Passport issuance failed for record ${issuanceEvent.recordId}:`,
+      `Passport issuance failed for record ${issuanceRecordId}:`,
       error instanceof Error ? error.stack ?? error.message : error,
     );
     await payload.update({
@@ -356,334 +352,4 @@ async function createSkillFromEvent(payload: Payload, event: SheetsVerifiedSkill
     }
     throw error;
   }
-}
-
-async function issuePassportVersion(
-  payload: Payload,
-  event: SheetsVerifiedSkillEvent,
-  student: Student,
-  currentSkill: Skill,
-  verifiedSkillId: number,
-): Promise<IngestionResult> {
-  const existingPassports = await payload.find({
-    collection: 'passports',
-    where: {
-      or: [
-        { studentRecord: { equals: student.id } },
-        { studentId: { equals: student.studentId } },
-      ],
-    },
-    limit: 2,
-    depth: 0,
-    overrideAccess: true,
-  });
-  
-  if (existingPassports.docs.length > 1) {
-    throw new Error('Student has multiple passports.');
-  }
-
-  const existingPassport = existingPassports.docs[0];
-  
-  const cleanStudentId = student.studentId.startsWith('BTU-AI-')
-    ? student.studentId
-    : `BTU-AI-${student.studentId.replace(/^BTU-?/i, '')}`;
-
-  const passportId = existingPassport?.passportId || cleanStudentId;
-  const firstIssuedAt = existingPassport?.firstIssuedAt || existingPassport?.createdAt || new Date().toISOString();
-  
-  const firstName = (student.firstName && student.firstName !== 'New') 
-    ? student.firstName 
-    : (existingPassport?.firstName || 'New');
-
-  const lastName = (student.lastName && student.lastName !== 'Student') 
-    ? student.lastName 
-    : (existingPassport?.lastName || 'Student');
-
-  const passport = existingPassport
-    ? await payload.update({
-        collection: 'passports',
-        id: existingPassport.id,
-        overrideAccess: true,
-        data: {
-          passportId,
-          studentRecord: student.id,
-          firstName,
-          lastName,
-          firstIssuedAt,
-        },
-      })
-    : await payload.create({
-        collection: 'passports',
-        overrideAccess: true,
-        data: {
-          studentId: student.studentId,
-          email: student.email,
-          passportId,
-          studentRecord: student.id,
-          firstName,
-          lastName,
-          firstIssuedAt,
-        },
-      });
-
-  const [latestVersionResult, sourceVersionResult, confirmedSkillsResult] = await Promise.all([
-    payload.find({
-      collection: 'passport-versions',
-      where: {
-        and: [
-          { passport: { equals: passport.id } },
-          { issuanceStatus: { equals: 'ISSUED' } },
-        ],
-      },
-      sort: '-version',
-      limit: 1,
-      depth: 0,
-      overrideAccess: true,
-    }),
-    payload.find({
-      collection: 'passport-versions',
-      where: { sourceRecordId: { equals: event.recordId } },
-      limit: 1,
-      depth: 0,
-      overrideAccess: true,
-    }),
-    payload.find({
-      collection: 'verified-skills',
-      where: {
-        and: [
-          { student: { equals: student.id } },
-          { status: { equals: 'CONFIRMED' } },
-        ],
-      },
-      sort: 'earnedAt',
-      limit: 1000,
-      depth: 2,
-      overrideAccess: true,
-    }),
-  ]);
-
-  const confirmedSkills = confirmedSkillsResult.docs.map((verified) => {
-    if (!isPopulatedSkill(verified.skill)) throw new Error('A confirmed skill relation is missing.');
-    return {
-      recordId: verified.recordId,
-      skillCode: verified.skill.skillCode,
-      skillName: verified.skill.name,
-      badgeId: verified.skill.badgeId,
-      earnedAt: dateOnly(verified.earnedAt),
-      description: verified.skill.description ?? '',
-      'Skill Name': verified.skill.name,
-      'Date Earned': dateOnly(verified.earnedAt),
-      'Skill Description': verified.skill.description ?? '',
-      'Badge/Stamp': verified.skill.badgeId,
-      'Skill Code': verified.skill.skillCode,
-      'Record ID': verified.recordId,
-    };
-  });
-
-  const latestVersion = latestVersionResult.docs[0];
-  const sourceVersion = sourceVersionResult.docs[0];
-  
-  if (sourceVersion && relationId(sourceVersion.passport) !== String(passport.id)) {
-    throw new Error('Record ID is already assigned to another passport version.');
-  }
-  
-  if (sourceVersion?.issuanceStatus === 'ISSUED') {
-    if (!latestVersion || sourceVersion.version > latestVersion.version) {
-      await payload.update({
-        collection: 'passports',
-        id: passport.id,
-        overrideAccess: true,
-        data: { latestVersion: sourceVersion.id },
-      });
-    }
-    await payload.update({
-      collection: 'verified-skills',
-      id: verifiedSkillId,
-      overrideAccess: true,
-      data: {
-        processingStatus: 'PROCESSED',
-        processingStartedAt: null,
-        processingError: null,
-        processedAt: new Date().toISOString(),
-      },
-    });
-    return {
-      kind: 'processed',
-      passportId,
-      verificationId: sourceVersion.verificationId,
-      version: sourceVersion.version,
-      txHash: sourceVersion.transactionHash ?? undefined,
-      downloadPath: `/api/passports/${sourceVersion.verificationId}`,
-    };
-  }
-
-  if (sourceVersion && latestVersion && sourceVersion.version <= latestVersion.version) {
-    throw new Error('A failed draft is older than the latest issued version and requires reconciliation.');
-  }
-
-  // დავაზღვიოთ, რომ version აუცილებლად რიცხვია
-  const version = Number(sourceVersion?.version ?? (latestVersion?.version ?? 0) + 1);
-  const verificationId = sourceVersion?.verificationId ?? verificationIdForRecord(event.recordId);
-  const skills = sourceVersion?.skillsSnapshot
-    ? sourceVersion.skillsSnapshot.map((skill) => ({
-        recordId: skill.recordId,
-        skillCode: skill.skillCode,
-        skillName: skill.skillName,
-        badgeId: skill.badgeId,
-        earnedAt: dateOnly(skill.earnedAt),
-        description: skill.description ?? '',
-        'Skill Name': skill.skillName,
-        'Date Earned': dateOnly(skill.earnedAt),
-        'Skill Description': skill.description ?? '',
-        'Badge/Stamp': skill.badgeId,
-        'Skill Code': skill.skillCode,
-        'Record ID': skill.recordId,
-      }))
-    : confirmedSkills;
-    
-  const issuedAt = sourceVersion?.issuedAt ?? new Date().toISOString();
-  
-  const pdfStudentData = {
-      'Student ID': student.studentId,
-      'First Name': passport.firstName,
-      'Last Name': passport.lastName,
-      'Passport ID': passportId,
-      'First Issued At': dateOnly(passport.firstIssuedAt || firstIssuedAt),
-      'Passport Version': version,
-      'Issued At': issuedAt,
-    };
-
-  let pdfBuffer: Buffer;
-  const renderPassportPdf = async () => {
-    console.log('PDF generation starting:', { recordId: event.recordId, verificationId, version, skillCount: skills.length });
-    const generated = await generatePassportPDF(pdfStudentData, skills, verificationId);
-    console.log('PDF generation finished:', { verificationId, bytes: generated.length });
-    return generated;
-  };
-  if (sourceVersion) {
-    try {
-      pdfBuffer = await readPassportPdf(sourceVersion.verificationId, sourceVersion.documentHash);
-      console.log('Reusing stored PDF for existing version:', { verificationId: sourceVersion.verificationId });
-    } catch (error) {
-      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
-      pdfBuffer = await renderPassportPdf();
-    }
-  } else {
-    pdfBuffer = await renderPassportPdf();
-  }
-
-  const registration = preparePassportRegistration(
-    {
-      'Record ID': event.recordId,
-      'Student ID': student.studentId,
-      'First Name': passport.firstName,
-      'Last Name': passport.lastName,
-      'Passport ID (Existing)': passportId,
-      'Skill Name': currentSkill.name,
-      'Date Earned': event.earnedAt,
-      status: 'CONFIRMED',
-    } satisfies PassportInput,
-    pdfBuffer,
-    {
-      passportId,
-      verificationId,
-      version,
-      prevVerificationId: latestVersion?.verificationId ?? '',
-    },
-  );
-
-  if (!registration.success) throw new Error(registration.error);
-
-  if (sourceVersion && sourceVersion.documentHash.toLowerCase() !== registration.data.docHashHex.toLowerCase()) {
-    throw new Error('Prepared PDF bytes changed and the stored version is unavailable; manual reconciliation is required.');
-  }
-
-  const versionData = {
-    passport: passport.id,
-    version: version,
-    sourceRecordId: event.recordId,
-    verificationId,
-    documentHash: registration.data.docHashHex,
-    issuanceStatus: 'PREPARED' as const,
-    skillsSnapshot: skills.map(({ recordId, skillCode, skillName, badgeId, earnedAt, description }) => ({
-      recordId,
-      skillCode,
-      skillName,
-      badgeId,
-      earnedAt: new Date(earnedAt).toISOString(),
-      description,
-    })),
-    issuerAddress: getIssuerAddress(),
-    issuedAt: new Date(issuedAt).toISOString(),
-  };
-
-  await storePassportPdf(verificationId, pdfBuffer, registration.data.docHashHex);
-
-  const versionDoc = sourceVersion
-    ? await payload.update({
-        collection: 'passport-versions',
-        id: sourceVersion.id,
-        overrideAccess: true,
-        data: versionData,
-      })
-    : await payload.create({
-        collection: 'passport-versions',
-        overrideAccess: true,
-        data: versionData,
-      });
-
-  let txHash: string | undefined = versionDoc.transactionHash ?? undefined;
-  
-  if (versionDoc.issuanceStatus !== 'ISSUED') {
-    txHash = await registerAndFinalizePassportVersion(
-      () => registerPassportVersionOnChain(registration.data),
-      async (transactionHash) => {
-        const issuedVersion = await payload.update({
-          collection: 'passport-versions',
-          id: versionDoc.id,
-          overrideAccess: true,
-          data: { issuanceStatus: 'ISSUED', transactionHash },
-        });
-        if (issuedVersion.issuanceStatus !== 'ISSUED') throw new Error('Version could not be marked issued.');
-      },
-      async () => {
-        if (!latestVersion || versionDoc.version > latestVersion.version) {
-          await payload.update({
-            collection: 'passports',
-            id: passport.id,
-            overrideAccess: true,
-            data: { latestVersion: versionDoc.id },
-          });
-        }
-      },
-    );
-  } else if (!latestVersion || versionDoc.version > latestVersion.version) {
-    await payload.update({
-      collection: 'passports',
-      id: passport.id,
-      overrideAccess: true,
-      data: { latestVersion: versionDoc.id },
-    });
-  }
-  
-  await payload.update({
-    collection: 'verified-skills',
-    id: verifiedSkillId,
-    overrideAccess: true,
-    data: {
-      processingStatus: 'PROCESSED',
-      processingStartedAt: null,
-      processingError: null,
-      processedAt: new Date().toISOString(),
-    },
-  });
-
-  return {
-    kind: 'processed',
-    passportId,
-    verificationId,
-    version,
-    txHash,
-    downloadPath: `/api/passports/${verificationId}`,
-  };
 }

@@ -1,7 +1,14 @@
 import type { NextConfig } from 'next';
 
+const devAllowedHosts = (process.env.DEV_ALLOWED_HOSTS ?? '')
+  .split(',')
+  .map((host) => host.trim())
+  .filter(Boolean);
+
 const nextConfig: NextConfig = {
-  // ⚠️ დამატებული კონფიგურაცია BTU-ს ლოგოსთვის
+  experimental: {
+    agentUpgrade: 'security',
+  },
   images: {
     remotePatterns: [
       {
@@ -12,10 +19,7 @@ const nextConfig: NextConfig = {
   },
 };
 
-nextConfig.allowedDevOrigins = [
-    '192.168.100.199',
-    '1cbf9addba4270.lhr.life',
-];
+nextConfig.allowedDevOrigins = devAllowedHosts;
 
 nextConfig.serverExternalPackages = [
     '@payloadcms/db-postgres',
@@ -27,8 +31,9 @@ nextConfig.serverExternalPackages = [
 
 // The PDF generator reads these files by computed path, which file tracing cannot see.
 nextConfig.outputFileTracingIncludes = {
-    '/api/webhook': ['./assets/**/*'],
+  '/api/webhook': ['./assets/**/*'],
   '/api/passports/[verificationId]': ['./assets/**/*'],
+  '/dashboard': ['./assets/**/*'],
 };
 
 export default nextConfig;

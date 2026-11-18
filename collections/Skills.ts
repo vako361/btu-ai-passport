@@ -1,5 +1,5 @@
 import type { CollectionConfig } from 'payload';
-import { isConfiguredPayloadAdmin } from '../lib/payloadAccess';
+import { canWrite, isAuthenticated } from '../lib/access';
 
 export const Skills: CollectionConfig = {
   slug: 'skills',
@@ -8,11 +8,10 @@ export const Skills: CollectionConfig = {
     defaultColumns: ['skillCode', 'name', 'category', 'badgeId'],
   },
   access: {
-    admin: isConfiguredPayloadAdmin,
-    create: isConfiguredPayloadAdmin,
-    delete: isConfiguredPayloadAdmin,
-    read: isConfiguredPayloadAdmin,
-    update: isConfiguredPayloadAdmin,
+    create: canWrite,
+    delete: canWrite,
+    read: isAuthenticated,
+    update: canWrite,
   },
   fields: [
     { name: 'skillCode', type: 'text', required: true, unique: true },
