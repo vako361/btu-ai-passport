@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { getPayload } from 'payload';
 import config from '@payload-config';
 import { AppHeader } from '@/components/AppHeader';
+import { IssuedToast } from '@/components/IssuedToast';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { getLedger } from '@/lib/ledger';
 import { isValidVerificationId, normalizeVerificationId, verifyCredential, type PublicVerification } from '@/lib/verification';
@@ -112,6 +113,7 @@ function Verified({ result, justIssued }: { result: PublicVerification; justIssu
 
   return (
     <div className="space-y-6">
+      {justIssued && authentic ? <IssuedToast /> : null}
       {authentic ? (
         <Banner tone="valid" title={justIssued ? 'Credential issued and verified' : 'Credential verified'}>
           This credential was registered by the issuer and its record is intact.

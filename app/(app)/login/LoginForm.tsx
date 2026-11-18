@@ -1,8 +1,9 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useEffect } from 'react';
 import { loginAction, type LoginState } from '@/lib/auth/actions';
 import { SubmitButton } from '@/components/ui/SubmitButton';
+import { toast } from 'sonner';
 
 const initialState: LoginState = {};
 
@@ -14,14 +15,12 @@ export function LoginForm() {
   const emailError = state.fieldErrors?.email;
   const passwordError = state.fieldErrors?.password;
 
+  useEffect(() => {
+    if (state.error) toast.error(state.error);
+  }, [state.error]);
+
   return (
     <form action={formAction} className="flex flex-col gap-5" noValidate>
-      {state.error ? (
-        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
-          {state.error}
-        </div>
-      ) : null}
-
       <div className="space-y-1.5">
         <label htmlFor="email" className="text-xs font-bold uppercase tracking-wider text-gray-500">
           Email

@@ -13,8 +13,7 @@
     "migrate": "payload migrate",
     "seed": "tsx scripts/seed.ts",
     "bootstrap:admin": "tsx scripts/bootstrap-admin.ts",
-    "test:pdf": "tsx scripts/test-pdf.ts",
-    "test:ingestion": "tsx scripts/test-ingestion.ts"
+    "test:pdf": "tsx scripts/test-pdf.ts"
   },
   "dependencies": {
     "@payloadcms/db-postgres": "^3.91.0",
@@ -33,6 +32,7 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "sharp": "^0.35.5",
+    "sonner": "^2.0.8",
     "zod": "^3.25.76"
   },
   "devDependencies": {

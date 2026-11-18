@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 
-// GET - მონაცემების წასაკითხად
+// GET - read data
 export async function GET() {
   try {
-    const data = { message: "წარმატებით ჩაიტვირთა" };
+    const data = { message: 'Data loaded successfully.' };
 
     return NextResponse.json(data, { status: 200 });
   } catch (error) {
@@ -15,53 +15,53 @@ export async function GET() {
   }
 }
 
-// POST - ახალი მონაცემის დასამატებლად
+// POST - create data
 export async function POST(request: Request) {
   try {
     const body = await request.json();
 
     return NextResponse.json(
-      { message: "მონაცემები წარმატებით შეიქმნა", data: body },
+      { message: 'Data created successfully.', data: body },
       { status: 201 }
     );
   } catch (error) {
     console.error('POST Error:', error);
     return NextResponse.json(
-      { error: "არასწორი მონაცემები" },
+      { error: 'Invalid data.' },
       { status: 400 }
     );
   }
 }
 
-// PUT - მონაცემის განახლებისთვის
+// PUT - update data
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
 
     return NextResponse.json(
-      { message: "მონაცემები განახლდა", data: body },
+      { message: 'Data updated successfully.', data: body },
       { status: 200 }
     );
   } catch (error) {
     console.error('PUT Error:', error);
     return NextResponse.json(
-      { error: "განახლება ვერ მოხერხდა" },
+      { error: 'Update failed.' },
       { status: 400 }
     );
   }
 }
 
-// DELETE - მონაცემის წასაშლელად
+// DELETE - delete data
 export async function DELETE() {
   try {
     return NextResponse.json(
-      { message: "წარმატებით წაიშალა" },
+      { message: 'Data deleted successfully.' },
       { status: 200 }
     );
   } catch (error) {
     console.error('DELETE Error:', error);
     return NextResponse.json(
-      { error: "წაშლა ვერ მოხერხდა" },
+      { error: 'Delete failed.' },
       { status: 500 }
     );
   }

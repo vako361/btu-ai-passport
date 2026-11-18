@@ -1,8 +1,9 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useEffect } from 'react';
 import { issueCredentialAction, type IssueState } from './actions';
 import { SubmitButton } from '@/components/ui/SubmitButton';
+import { toast } from 'sonner';
 
 interface Option {
   id: number;
@@ -25,14 +26,12 @@ export function IssueCredentialForm({ students, skills, defaultDate, defaultStud
   const [state, formAction] = useActionState(issueCredentialAction, initialState);
   const errors = state.fieldErrors ?? {};
 
+  useEffect(() => {
+    if (state.error) toast.error(state.error);
+  }, [state.error]);
+
   return (
     <form action={formAction} className="space-y-5" noValidate>
-      {state.error ? (
-        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
-          {state.error}
-        </div>
-      ) : null}
-
       <div className="grid gap-5 sm:grid-cols-3">
         <div className="space-y-1.5">
           <label htmlFor="studentId" className="text-xs font-bold uppercase tracking-wider text-gray-500">Student</label>

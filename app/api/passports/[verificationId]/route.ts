@@ -21,7 +21,7 @@ export async function GET(
 
   const payload = await getPayload({ config });
 
-  // მოვძებნოთ პასპორტის ვერსია Verification ID-ით საჯაროდ
+  // Look up the passport version by its public Verification ID.
   const versions = await payload.find({
     collection: 'passport-versions',
     where: {

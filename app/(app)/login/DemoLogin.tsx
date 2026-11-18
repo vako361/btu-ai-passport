@@ -1,9 +1,10 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useEffect } from 'react';
 import { useFormStatus } from 'react-dom';
 import { demoLoginAction, type LoginState } from '@/lib/auth/actions';
 import { Spinner } from '@/components/ui/Spinner';
+import { toast } from 'sonner';
 
 const initialState: LoginState = {};
 
@@ -41,13 +42,12 @@ function DemoButton({ role, label, description, tone }: DemoButtonProps) {
 export function DemoLogin() {
   const [state, formAction] = useActionState(demoLoginAction, initialState);
 
+  useEffect(() => {
+    if (state.error) toast.error(state.error);
+  }, [state.error]);
+
   return (
     <form action={formAction} className="flex flex-col gap-3">
-      {state.error ? (
-        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
-          {state.error}
-        </div>
-      ) : null}
       <DemoButton
         role="admin"
         tone="primary"

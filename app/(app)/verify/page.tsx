@@ -5,7 +5,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-// ტიპების განსაზღვრა შედეგისთვის (აშორებს any-ს)
 interface VerificationResult {
   success: boolean;
   verificationId?: string;
@@ -32,10 +31,7 @@ function VerifyPageContent() {
   const [verificationId, setVerificationId] = useState(searchParams.get('code') || '');
   const [result, setResult] = useState<VerificationResult | null>(null);
   
-  // განცალკევებული Loading მდგომარეობები
   const [loadingType, setLoadingType] = useState<'id' | 'file' | null>(null);
-  
-  // Drag & Drop მდგომარეობა
   const [isDragging, setIsDragging] = useState(false);
 
   const runVerification = async (formData: FormData, type: 'id' | 'file') => {
@@ -47,17 +43,16 @@ function VerifyPageContent() {
       
       if (!response.ok) {
         const errorBody = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(errorBody?.error || 'სერვერის შეცდომა');
+        throw new Error(errorBody?.error || 'The server returned an error.');
       }
       
       const data: VerificationResult = await response.json();
       setResult(data);
     } catch (error) {
-      console.error("შეცდომა კავშირისას:", error);
-      // მომხმარებლისთვის შეცდომის ჩვენება catch ბლოკიდან
+      console.error('Verification request failed:', error);
       setResult({
         success: false,
-        error: "სერვერთან კავშირი ვერ მოხერხდა ან მონაცემები არასწორია."
+        error: 'Could not reach the server, or the submitted data is invalid.',
       });
     } finally {
       setLoadingType(null);
@@ -73,17 +68,16 @@ function VerifyPageContent() {
 
   const processFile = (selectedFile: File) => {
     if (selectedFile.type !== 'application/pdf') {
-      setResult({ success: false, error: "გთხოვთ ატვირთოთ მხოლოდ PDF ფორმატის ფაილი." });
+      setResult({ success: false, error: 'Please upload a PDF file.' });
       return;
     }
     setFile(selectedFile);
-    setVerificationId(''); // ფაილის ატვირთვისას ვასუფთავებთ ID-ს
+    setVerificationId('');
     const formData = new FormData();
     formData.append('file', selectedFile);
     runVerification(formData, 'file');
   };
 
-  // Drag and Drop ფუნქციები
   const handleDragOver = (e: React.DragEvent<HTMLLabelElement>) => {
     e.preventDefault();
     setIsDragging(true);
@@ -118,7 +112,6 @@ function VerifyPageContent() {
   return (
     <div className="relative min-h-screen flex flex-col text-black font-sans z-0">
       
-      {/* ფონი */}
       <div className="absolute inset-0 bg-[#F4F5F7] -z-20"></div>
       <div className="absolute inset-0 bg-[url('/images/background.png')] bg-cover bg-no-repeat bg-center opacity-10 -z-10 pointer-events-none"></div>
       
@@ -146,32 +139,29 @@ function VerifyPageContent() {
         </div>
       </header>
 
-      {/* მთავარი კონტენტი */}
       <main className="flex-1 w-full max-w-250 mx-auto pt-8 pb-12 px-6 flex flex-col justify-center mt-10">
         
         <div className="relative bg-white/70 backdrop-blur-[2px] w-full rounded-3xl shadow-md px-10 py-16 flex flex-col items-center">
           
-          {/* სტიკერები */}
+          {/* Decorative artwork */}
           <Image src="/images/latest-skillset.png" alt="Latest AI Skillset" width={220} height={150} className="hidden lg:block absolute top-0 -left-12 w-55 -rotate-12 drop-shadow-lg z-10 pointer-events-none" />
           <Image src="/images/issued-by.png" alt="Issued by" width={200} height={150} className="hidden lg:block absolute top-[50%] -left-25 w-50 -rotate-12 drop-shadow-lg z-10 pointer-events-none" />
           <Image src="/images/blue-triangle.png" alt="AI Skills Digital Passport" width={160} height={120} className="hidden lg:block absolute top-[25%] -right-16 w-40 rotate-12 drop-shadow-lg z-10 pointer-events-none" />
           <Image src="/images/blockchain.png" alt="Blockchain Verified" width={180} height={150} className="hidden lg:block absolute bottom-12 -right-30 w-45 -rotate-6 drop-shadow-lg z-10 pointer-events-none" />
 
-          {/* სათაური */}
           <div className="text-center mb-8">
-            <h2 className="text-[28px] font-black text-black">პასპორტის ვერიფიკაცია</h2>
-            <h3 className="text-[18px] font-extrabold text-[#FE017E] mt-2">მარტივი ვერიფიკაცია კოდით</h3>
+            <h2 className="text-[28px] font-black text-black">Passport verification</h2>
+            <h3 className="text-[18px] font-extrabold text-[#FE017E] mt-2">Verify by code</h3>
           </div>
 
           <div className="flex flex-col items-center w-full max-w-175 z-20">
             
-            {/* 1. კოდით შემოწმების ფორმა */}
             <form onSubmit={handleIdSubmit} className="flex flex-col md:flex-row w-full gap-4 mb-12 items-end">
               <div className="flex-1 w-full">
-                <label className="block text-[14px] font-semibold text-gray-500 mb-2">შეიყვანეთ ვერიფიკაციის კოდი</label>
+                <label className="block text-[14px] font-semibold text-gray-500 mb-2">Verification code</label>
                 <input 
                   type="text" 
-                  placeholder="მაგ: VER12345"
+                  placeholder="e.g. VER-1234567890ABCDEF12345678"
                   value={verificationId}
                   onChange={(e) => { setVerificationId(e.target.value); setFile(null); }}
                   className="w-full border border-gray-200 rounded-lg px-4 h-12 text-[15px] outline-none focus:border-[#FE017E] focus:ring-1 focus:ring-[#FE017E] transition-all font-medium bg-white"
@@ -184,14 +174,13 @@ function VerifyPageContent() {
                   disabled={loadingType !== null || !verificationId}
                   className="w-full md:w-auto bg-[#FE017E] cursor-pointer hover:bg-[#d6006a] hover:scale-105 disabled:bg-gray-300 disabled:hover:scale-100 disabled:cursor-not-allowed text-white text-[16px] font-bold h-12 px-10 rounded-lg transition-all duration-300 flex items-center justify-center shadow-sm"
                 >
-                  {loadingType === 'id' ? 'მოწმდება...' : 'შემოწმება'}
+                  {loadingType === 'id' ? 'Checking...' : 'Verify'}
                 </button>
               </div>
             </form>
 
-            {/* 2. PDF ატვირთვის სექცია (Drag and Drop-ით) */}
             <div className="w-full text-center border-t border-gray-100 pt-10">
-              <h3 className="text-[18px] font-extrabold text-[#FE017E] mb-6">ან ატვირთეთ PDF სრული ვერიფიკაციისთვის</h3>
+              <h3 className="text-[18px] font-extrabold text-[#FE017E] mb-6">Or upload a PDF for full verification</h3>
               
               <label 
                 onDragOver={handleDragOver}
@@ -202,7 +191,7 @@ function VerifyPageContent() {
                 }`}
               >
                 {loadingType === 'file' ? (
-                  <span className="text-[#FE017E] font-bold text-lg">მიმდინარეობს შემოწმება...</span>
+                  <span className="text-[#FE017E] font-bold text-lg">Verifying PDF...</span>
                 ) : (
                   <>
                     <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2C2D30" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mb-4 group-hover:-translate-y-2 transition-transform duration-300">
@@ -211,7 +200,7 @@ function VerifyPageContent() {
                       <line x1="12" y1="3" x2="12" y2="15"></line>
                     </svg>
                     <span className="text-gray-500 text-[15px] font-semibold">
-                      {isDragging ? 'ჩააგდეთ ფაილი აქ' : file ? file.name : 'დააკლიკეთ ან ჩააგდეთ PDF ფაილი'}
+                      {isDragging ? 'Drop your PDF here' : file ? file.name : 'Choose or drop a PDF file'}
                     </span>
                   </>
                 )}
@@ -242,14 +231,13 @@ function VerifyPageContent() {
             />
           </div>
           <div className="flex flex-col justify-center text-[#8C8D90] text-[14px] leading-snug md:border-l md:border-[#333333] md:pl-8 text-center md:text-left h-full pt-4">
-            <p>თბილისი 0179</p>
-            <p>საქართველო ი.ჭავჭავაძის გამზირი N82</p>
+            <p>Tbilisi 0179, Georgia</p>
+            <p>82 Ilia Chavchavadze Avenue, Tbilisi</p>
             <p>(+995 32) 2 195 015</p>
           </div>
         </div>
       </footer>
 
-      {/* Modal - შედეგის ფანჯარა */}
       {result && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-[2px] transition-opacity">
           <div className="bg-white rounded-3xl p-8 max-w-112.5 w-full relative shadow-2xl flex flex-col items-center text-center animate-in fade-in zoom-in duration-200">
@@ -279,37 +267,37 @@ function VerifyPageContent() {
                   )}
                 </div>
                 <h3 className="text-black font-extrabold text-[22px] mb-2">
-                  {result.recordExists ? 'ვერიფიკაციის ჩანაწერი მოიძებნა' : 'ვერიფიკაციის ჩანაწერი არ მოიძებნა'}
+                  {result.recordExists ? 'Credential record found' : 'Credential record not found'}
                 </h3>
                 <p className="text-gray-600 mb-6">
                   {result.recordExists
-                    ? 'ქვემოთ ნაჩვენებია ჩანაწერის, PDF-ის, გამცემისა და ვერსიის ცალკეული სტატუსები.'
-                    : 'ამ Verification ID-სთვის blockchain-ზე ოფიციალური ჩანაწერი არ არსებობს.'}
+                    ? 'Review the record, PDF, issuer, and version checks below.'
+                    : 'No official ledger record exists for this Verification ID.'}
                 </p>
 
                 <dl className="w-full divide-y divide-gray-200 rounded-lg border border-gray-200 bg-gray-50 px-4 text-left">
                   <div className="flex items-center justify-between gap-4 py-3">
-                    <dt className="text-sm text-gray-600">ოფიციალური ჩანაწერი</dt>
+                    <dt className="text-sm text-gray-600">Official record</dt>
                     <dd className={`text-right text-sm font-bold ${result.recordExists ? 'text-green-700' : 'text-red-700'}`}>
-                      {result.recordExists ? 'მოიძებნა' : 'არ მოიძებნა'}
+                      {result.recordExists ? 'Found' : 'Not found'}
                     </dd>
                   </div>
                   <div className="flex items-center justify-between gap-4 py-3">
-                    <dt className="text-sm text-gray-600">ატვირთული PDF-ის უცვლელობა</dt>
+                    <dt className="text-sm text-gray-600">PDF integrity</dt>
                     <dd className={`text-right text-sm font-bold ${result.documentIntegrity === 'VERIFIED' ? 'text-green-700' : result.documentIntegrity === 'FAILED' ? 'text-red-700' : 'text-gray-600'}`}>
-                      {result.documentIntegrity === 'VERIFIED' ? 'დადასტურდა' : result.documentIntegrity === 'FAILED' ? 'არ ემთხვევა' : 'არ შემოწმებულა'}
+                      {result.documentIntegrity === 'VERIFIED' ? 'Verified' : result.documentIntegrity === 'FAILED' ? 'Mismatch' : 'Not checked'}
                     </dd>
                   </div>
                   <div className="flex items-center justify-between gap-4 py-3">
-                    <dt className="text-sm text-gray-600">გამცემის იდენტობა (BTU)</dt>
+                    <dt className="text-sm text-gray-600">Issuer identity (BTU)</dt>
                     <dd className={`text-right text-sm font-bold ${result.issuerAuthenticity === 'VERIFIED' ? 'text-green-700' : 'text-amber-700'}`}>
-                      {result.issuerAuthenticity === 'VERIFIED' ? 'დადასტურდა' : result.issuerAuthenticity === 'UNVERIFIED' ? 'არ დადასტურდა' : result.issuerAuthenticity === 'NOT_CONFIGURED' ? 'ვერიფიკატორი არაა კონფიგურირებული' : 'არ შემოწმებულა'}
+                      {result.issuerAuthenticity === 'VERIFIED' ? 'Verified' : result.issuerAuthenticity === 'UNVERIFIED' ? 'Unverified' : result.issuerAuthenticity === 'NOT_CONFIGURED' ? 'Verifier not configured' : 'Not checked'}
                     </dd>
                   </div>
                   <div className="flex items-center justify-between gap-4 py-3">
-                    <dt className="text-sm text-gray-600">ვერსიის სტატუსი</dt>
+                    <dt className="text-sm text-gray-600">Version status</dt>
                     <dd className={`text-right text-sm font-bold ${result.latestStatus === 'LATEST' ? 'text-green-700' : 'text-amber-700'}`}>
-                      {result.latestStatus === 'LATEST' ? `უახლესი (V${result.version})` : result.latestStatus === 'SUPERSEDED' ? `ავთენტური, ძველი (V${result.version})` : 'უცნობია'}
+                      {result.latestStatus === 'LATEST' ? `Current (V${result.version})` : result.latestStatus === 'SUPERSEDED' ? `Authentic, superseded (V${result.version})` : 'Unknown'}
                     </dd>
                   </div>
                 </dl>
@@ -322,8 +310,8 @@ function VerifyPageContent() {
                     <line x1="6" y1="6" x2="18" y2="18"></line>
                   </svg>
                 </div>
-                <h3 className="text-black font-extrabold text-[22px] mb-2">ვერიფიკაცია ვერ მოხერხდა</h3>
-                <p className="text-gray-600 mb-6">{result.error || "მონაცემები არ მოიძებნა ან ფაილი არასწორია."}</p>
+                <h3 className="text-black font-extrabold text-[22px] mb-2">Verification failed</h3>
+                <p className="text-gray-600 mb-6">{result.error || 'No record was found, or the file is invalid.'}</p>
               </>
             )}
             
@@ -331,7 +319,7 @@ function VerifyPageContent() {
               onClick={closeModal}
               className="mt-6 w-full bg-gray-100 hover:bg-gray-200 text-black font-bold py-3 rounded-xl transition-colors cursor-pointer"
             >
-              დახურვა
+              Close
             </button>
 
           </div>

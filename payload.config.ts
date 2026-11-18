@@ -12,7 +12,6 @@ import { Skills } from "./collections/Skills";
 import { VerifiedSkills } from "./collections/VerifiedSkills";
 import { Passports } from "./collections/Passports";
 import { PassportVersions } from "./collections/PassportVersions";
-import { IntegrationLogs } from "./collections/IntegrationLogs";
 import { LedgerEntries } from "./collections/LedgerEntries";
 import { getAppEnv, getCoreEnv } from "./lib/env";
 
@@ -39,7 +38,6 @@ export default buildConfig({
     VerifiedSkills,
     Passports,
     PassportVersions,
-    IntegrationLogs,
     LedgerEntries,
   ],
   editor: lexicalEditor(),

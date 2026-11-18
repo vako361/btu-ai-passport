@@ -74,7 +74,6 @@ export interface Config {
     'verified-skills': VerifiedSkill;
     passports: Passport;
     'passport-versions': PassportVersion;
-    'integration-logs': IntegrationLog;
     'ledger-entries': LedgerEntry;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
@@ -90,7 +89,6 @@ export interface Config {
     'verified-skills': VerifiedSkillsSelect<false> | VerifiedSkillsSelect<true>;
     passports: PassportsSelect<false> | PassportsSelect<true>;
     'passport-versions': PassportVersionsSelect<false> | PassportVersionsSelect<true>;
-    'integration-logs': IntegrationLogsSelect<false> | IntegrationLogsSelect<true>;
     'ledger-entries': LedgerEntriesSelect<false> | LedgerEntriesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -285,22 +283,6 @@ export interface PassportVersion {
   createdAt: string;
 }
 /**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "integration-logs".
- */
-export interface IntegrationLog {
-  id: number;
-  requestId: string;
-  source: 'GOOGLE_SHEETS';
-  recordId?: string | null;
-  stage: 'AUTHENTICATION' | 'VALIDATION' | 'LOOKUP' | 'INGESTION';
-  outcome: 'ACCEPTED' | 'DUPLICATE' | 'SKIPPED' | 'REJECTED' | 'FAILED';
-  message: string;
-  loggedAt: string;
-  updatedAt: string;
-  createdAt: string;
-}
-/**
  * Signed, hash-chained credential registrations used when LEDGER_MODE=demo.
  *
  * This interface was referenced by `Config`'s JSON-Schema
@@ -373,10 +355,6 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'passport-versions';
         value: number | PassportVersion;
-      } | null)
-    | ({
-        relationTo: 'integration-logs';
-        value: number | IntegrationLog;
       } | null)
     | ({
         relationTo: 'ledger-entries';
@@ -559,21 +537,6 @@ export interface PassportVersionsSelect<T extends boolean = true> {
   issuerAddress?: T;
   transactionHash?: T;
   issuedAt?: T;
-  updatedAt?: T;
-  createdAt?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "integration-logs_select".
- */
-export interface IntegrationLogsSelect<T extends boolean = true> {
-  requestId?: T;
-  source?: T;
-  recordId?: T;
-  stage?: T;
-  outcome?: T;
-  message?: T;
-  loggedAt?: T;
   updatedAt?: T;
   createdAt?: T;
 }
