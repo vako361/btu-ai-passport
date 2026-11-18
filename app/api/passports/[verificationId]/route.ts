@@ -37,7 +37,8 @@ export async function GET(
   if (!version) return NextResponse.json({ error: 'Passport not found.' }, { status: 404 });
 
   try {
-    const pdf = await readOrCreatePassportPdf(verificationId, version.documentHash, async () => {
+    const storedVerificationId = version.verificationId;
+    const pdf = await readOrCreatePassportPdf(storedVerificationId, version.documentHash, async () => {
       const passport = typeof version.passport === 'object' && version.passport !== null
         ? version.passport
         : null;
@@ -53,12 +54,12 @@ export async function GET(
         },
         version: version.version,
         issuedAt: version.issuedAt,
-        verificationId,
+        verificationId: storedVerificationId,
         skills: skillsFromSnapshot(version.skillsSnapshot),
         verifyBaseUrl: getAppEnv().appUrl,
       });
     });
-    const filename = `${verificationId}-v${version.version}.pdf`;
+    const filename = `${storedVerificationId}-v${version.version}.pdf`;
     return new Response(new Uint8Array(pdf), {
       headers: {
         'Content-Type': 'application/pdf',

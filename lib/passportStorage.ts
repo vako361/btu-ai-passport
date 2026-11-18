@@ -9,8 +9,9 @@ const FILE_MAGIC = Buffer.from('BTUPDF01');
 function storageDirectory() {
   const { directory: configuredDirectory, isVercel } = getStorageEnv();
   // Vercel's filesystem is read-only except the temp dir.
+  if (isVercel) return path.join(os.tmpdir(), 'passports');
   if (!configuredDirectory) {
-    return isVercel ? path.join(os.tmpdir(), 'passports') : path.join(process.cwd(), 'storage', 'passports');
+    return path.join(process.cwd(), 'storage', 'passports');
   }
   const resolved = path.resolve(/* turbopackIgnore: true */ configuredDirectory);
   // The temp dir itself is not ours to chmod, so keep files in a subfolder.
@@ -107,12 +108,23 @@ export async function readOrCreatePassportPdf(
   try {
     return await readPassportPdf(verificationId, expectedHash);
   } catch (error) {
-    if (typeof error !== 'object' || error === null || !('code' in error) || error.code !== 'ENOENT') {
+    if (
+      typeof error !== 'object' || error === null || !('code' in error) ||
+      (error.code !== 'ENOENT' && error.code !== 'ENOTDIR')
+    ) {
       throw error;
     }
   }
 
   const pdf = await createPdf();
-  await storePassportPdf(verificationId, pdf, expectedHash);
+  if (hashDocument(pdf).toLowerCase() !== expectedHash.toLowerCase()) {
+    throw new Error('Generated PDF hash does not match the PassportVersion hash.');
+  }
+
+  try {
+    await storePassportPdf(verificationId, pdf, expectedHash);
+  } catch (error) {
+    console.warn('Regenerated passport PDF could not be cached to disk.', error);
+  }
   return pdf;
 }
