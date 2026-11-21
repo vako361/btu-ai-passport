@@ -29,6 +29,18 @@ export default buildConfig({
     importMap: {
       baseDir: path.resolve(dirname),
     },
+    meta: {
+      icons: [
+        { rel: "icon", type: "image/png", sizes: "32x32", url: "/icon1.png" },
+        { rel: "icon", type: "image/png", sizes: "192x192", url: "/icon2.png" },
+        {
+          rel: "apple-touch-icon",
+          type: "image/png",
+          sizes: "180x180",
+          url: "/apple-icon.png",
+        },
+      ],
+    },
   },
   cors: env.trustedOrigins,
   csrf: env.trustedOrigins,
