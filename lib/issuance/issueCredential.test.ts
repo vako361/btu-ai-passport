@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import type { LedgerProvider } from '../ledger';
-import { addSkill, addStudent, createHarness, muteConsoleLog, useTemporaryStorage, VERIFY_BASE_URL } from '../testing/harness';
+import { addSkill, addStudent, createHarness, muteConsoleLog, useTestStorageKey, VERIFY_BASE_URL } from '../testing/harness';
 import { hashesMatch, verifyCredential } from '../verification';
 import { issueCredential } from './issueCredential';
 import { IssuanceError } from './types';
 
 let restoreConsole: () => void;
 
-before(async () => {
+before(() => {
   restoreConsole = muteConsoleLog();
-  await useTemporaryStorage();
+  useTestStorageKey();
 });
 
 after(() => restoreConsole());
@@ -50,10 +50,12 @@ describe('issueCredential', () => {
     const [passport] = payload.dump('passports');
     const [verifiedSkill] = payload.dump('verified-skills');
     assert.equal(version.issuanceStatus, 'ISSUED');
+    assert.equal(version.verifyBaseUrl, VERIFY_BASE_URL);
     assert.equal(version.transactionHash, issued.transactionHash);
     assert.equal(passport.latestVersion, version.id);
     assert.equal(verifiedSkill.processingStatus, 'PROCESSED');
     assert.equal(payload.dump('ledger-entries').length, 1);
+    assert.equal(payload.dump('passport-files').length, 1);
 
     const result = await verifyCredential(payload, ledger, issued.verificationId.toLowerCase());
     assert.equal(result.recordExists, true);

@@ -75,6 +75,7 @@ export interface Config {
     passports: Passport;
     'passport-versions': PassportVersion;
     'ledger-entries': LedgerEntry;
+    'passport-files': PassportFile;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -90,6 +91,7 @@ export interface Config {
     passports: PassportsSelect<false> | PassportsSelect<true>;
     'passport-versions': PassportVersionsSelect<false> | PassportVersionsSelect<true>;
     'ledger-entries': LedgerEntriesSelect<false> | LedgerEntriesSelect<true>;
+    'passport-files': PassportFilesSelect<false> | PassportFilesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -264,6 +266,7 @@ export interface PassportVersion {
   sourceRecordId: string;
   verificationId: string;
   documentHash: string;
+  verifyBaseUrl?: string | null;
   issuanceStatus: 'PREPARED' | 'FAILED' | 'ISSUED';
   skillsSnapshot?:
     | {
@@ -301,6 +304,18 @@ export interface LedgerEntry {
   signature: string;
   issuerAddress: string;
   isLatest?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "passport-files".
+ */
+export interface PassportFile {
+  id: number;
+  verificationId: string;
+  documentHash: string;
+  encryptedPdf: string;
   updatedAt: string;
   createdAt: string;
 }
@@ -359,6 +374,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'ledger-entries';
         value: number | LedgerEntry;
+      } | null)
+    | ({
+        relationTo: 'passport-files';
+        value: number | PassportFile;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -522,6 +541,7 @@ export interface PassportVersionsSelect<T extends boolean = true> {
   sourceRecordId?: T;
   verificationId?: T;
   documentHash?: T;
+  verifyBaseUrl?: T;
   issuanceStatus?: T;
   skillsSnapshot?:
     | T
@@ -556,6 +576,17 @@ export interface LedgerEntriesSelect<T extends boolean = true> {
   signature?: T;
   issuerAddress?: T;
   isLatest?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "passport-files_select".
+ */
+export interface PassportFilesSelect<T extends boolean = true> {
+  verificationId?: T;
+  documentHash?: T;
+  encryptedPdf?: T;
   updatedAt?: T;
   createdAt?: T;
 }

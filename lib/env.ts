@@ -104,13 +104,9 @@ const coreSchema = z
 const storageSchema = z
   .object({
     PASSPORT_STORAGE_KEY: z.string().regex(HEX_32_BYTES, 'must be a 32-byte hex key (`openssl rand -hex 32`)'),
-    PASSPORT_STORAGE_DIR: z.string().optional(),
-    VERCEL: z.string().optional(),
   })
   .transform((raw) => ({
     encryptionKey: Buffer.from(raw.PASSPORT_STORAGE_KEY, 'hex'),
-    directory: raw.PASSPORT_STORAGE_DIR,
-    isVercel: Boolean(raw.VERCEL),
   }));
 
 export type LedgerMode = 'demo' | 'amoy';

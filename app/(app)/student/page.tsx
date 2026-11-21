@@ -88,7 +88,7 @@ export default async function StudentPortalPage() {
 
             <div className="flex flex-wrap items-center gap-3">
               <a
-                href={passportDownloadPath(latestVersion.verificationId)}
+                href={`${passportDownloadPath(latestVersion.verificationId)}?download=1`}
                 className="inline-flex h-12 items-center justify-center rounded-xl bg-[#FE017E] px-7 text-sm font-bold text-white shadow-lg shadow-pink-500/20 transition-all hover:bg-[#d6006a]"
               >
                 Download PDF

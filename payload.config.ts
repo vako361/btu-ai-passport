@@ -13,6 +13,7 @@ import { VerifiedSkills } from "./collections/VerifiedSkills";
 import { Passports } from "./collections/Passports";
 import { PassportVersions } from "./collections/PassportVersions";
 import { LedgerEntries } from "./collections/LedgerEntries";
+import { PassportFiles } from "./collections/PassportFiles";
 import { getAppEnv, getCoreEnv } from "./lib/env";
 
 const filename = fileURLToPath(import.meta.url);
@@ -24,6 +25,7 @@ export default buildConfig({
   serverURL: env.appUrl,
   admin: {
     user: Users.slug,
+    theme: "light",
     importMap: {
       baseDir: path.resolve(dirname),
     },
@@ -39,6 +41,7 @@ export default buildConfig({
     Passports,
     PassportVersions,
     LedgerEntries,
+    PassportFiles,
   ],
   editor: lexicalEditor(),
   secret: env.payloadSecret,

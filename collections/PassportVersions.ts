@@ -20,6 +20,7 @@ export const PassportVersions: CollectionConfig = {
     { name: 'sourceRecordId', type: 'text', required: true, unique: true },
     { name: 'verificationId', type: 'text', required: true, unique: true },
     { name: 'documentHash', type: 'text', required: true },
+    { name: 'verifyBaseUrl', type: 'text' },
     {
       name: 'issuanceStatus',
       type: 'select',

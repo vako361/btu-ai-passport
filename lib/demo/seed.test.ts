@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { createHarness, muteConsoleLog, useTemporaryStorage, VERIFY_BASE_URL } from '../testing/harness';
+import { createHarness, muteConsoleLog, useTestStorageKey, VERIFY_BASE_URL } from '../testing/harness';
 import { verifyCredential } from '../verification';
 import { ensureDemoAccounts } from './accounts';
 import type { DemoEnabled } from './config';
@@ -9,9 +9,9 @@ import { SEED_CREDENTIALS, SEED_SKILLS, SEED_STUDENTS } from './seedData';
 
 let restoreConsole: () => void;
 
-before(async () => {
+before(() => {
   restoreConsole = muteConsoleLog();
-  await useTemporaryStorage();
+  useTestStorageKey();
 });
 
 after(() => restoreConsole());

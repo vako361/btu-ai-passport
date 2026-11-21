@@ -2,7 +2,7 @@ import type { Payload } from 'payload';
 import { ValidationError } from 'payload';
 import type { Skill, Student } from '../../payload-types';
 import type { LedgerProvider } from '../ledger';
-import { readPassportPdf, storePassportPdf } from '../passportStorage';
+import { PassportFileMissingError, readPassportPdf, storePassportPdf } from '../passportStorage';
 import { registerAndFinalizePassportVersion } from './finalize';
 import { renderPassportPdf, skillsFromSnapshot } from './pdf';
 import type { IssuedVersion, PassportHolder, SnapshotSkill } from './types';
@@ -22,10 +22,6 @@ export interface IssuePassportVersionParams {
 
 function isPopulatedSkill(value: unknown): value is Skill {
   return typeof value === 'object' && value !== null && 'skillCode' in value && 'name' in value;
-}
-
-function isMissingFile(error: unknown): boolean {
-  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
 /** Another request took the next version number for this passport first; retrying picks up its result. */
@@ -218,9 +214,9 @@ export async function issuePassportVersion(params: IssuePassportVersionParams): 
   let pdfBuffer: Buffer;
   if (sourceVersion) {
     try {
-      pdfBuffer = await readPassportPdf(sourceVersion.verificationId, sourceVersion.documentHash);
+      pdfBuffer = await readPassportPdf(payload, sourceVersion.verificationId, sourceVersion.documentHash);
     } catch (error) {
-      if (!isMissingFile(error)) throw error;
+      if (!(error instanceof PassportFileMissingError)) throw error;
       pdfBuffer = await render();
     }
   } else {
@@ -238,6 +234,7 @@ export async function issuePassportVersion(params: IssuePassportVersionParams): 
     sourceRecordId: recordId,
     verificationId,
     documentHash,
+    verifyBaseUrl: sourceVersion?.verifyBaseUrl ?? verifyBaseUrl ?? null,
     issuanceStatus: 'PREPARED' as const,
     skillsSnapshot: skills.map((skill) => ({
       ...skill,
@@ -247,7 +244,7 @@ export async function issuePassportVersion(params: IssuePassportVersionParams): 
     issuedAt: new Date(issuedAt).toISOString(),
   };
 
-  await storePassportPdf(verificationId, pdfBuffer, documentHash);
+  await storePassportPdf(payload, verificationId, pdfBuffer, documentHash);
 
   const versionDoc = sourceVersion
     ? await payload.update({

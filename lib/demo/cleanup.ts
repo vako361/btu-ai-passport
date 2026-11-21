@@ -22,7 +22,7 @@ const isVisitorRecord = (recordId: string | null | undefined) => recordId?.start
 async function removeVersion(payload: Payload, version: PassportVersion): Promise<void> {
   await payload.delete({ collection: 'ledger-entries', where: { verificationId: { equals: version.verificationId } }, overrideAccess: true });
   await payload.delete({ collection: 'passport-versions', where: { id: { equals: version.id } }, overrideAccess: true });
-  await deletePassportPdf(version.verificationId).catch((error: unknown) => {
+  await deletePassportPdf(payload, version.verificationId).catch((error: unknown) => {
     console.error(`Could not remove stored PDF for ${version.verificationId}`, error);
   });
 }

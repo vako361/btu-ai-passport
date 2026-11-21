@@ -1,30 +1,35 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
-import { chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
+import type { Payload } from 'payload';
 import { getStorageEnv } from './env';
 
 const FILE_MAGIC = Buffer.from('BTUPDF01');
 
-function storageDirectory() {
-  const { directory: configuredDirectory, isVercel } = getStorageEnv();
-  // Vercel's filesystem is read-only except the temp dir.
-  if (isVercel) return path.join(os.tmpdir(), 'passports');
-  if (!configuredDirectory) {
-    return path.join(process.cwd(), 'storage', 'passports');
+/** Thrown when no PDF has been stored for a Verification ID yet. */
+export class PassportFileMissingError extends Error {
+  constructor(verificationId: string) {
+    super(`No stored passport PDF for ${verificationId}.`);
+    this.name = 'PassportFileMissingError';
   }
-  const resolved = path.resolve(/* turbopackIgnore: true */ configuredDirectory);
-  // The temp dir itself is not ours to chmod, so keep files in a subfolder.
-  return resolved === path.resolve(os.tmpdir()) ? path.join(resolved, 'passports') : resolved;
 }
 
 function encryptionKey() {
   return getStorageEnv().encryptionKey;
 }
 
-function filePath(verificationId: string) {
+function assertVerificationId(verificationId: string) {
   if (!/^VER-[A-Z0-9-]{1,80}$/i.test(verificationId)) throw new Error('Invalid Verification ID.');
-  return path.join(storageDirectory(), `${verificationId}.pdf.enc`);
+}
+
+async function findStoredFile(payload: Payload, verificationId: string) {
+  assertVerificationId(verificationId);
+  const result = await payload.find({
+    collection: 'passport-files',
+    where: { verificationId: { equals: verificationId } },
+    limit: 1,
+    depth: 0,
+    overrideAccess: true,
+  });
+  return result.docs[0] ?? null;
 }
 
 function hashDocument(buffer: Buffer) {
@@ -51,49 +56,42 @@ function decryptPdf(envelope: Buffer) {
   return Buffer.concat([decipher.update(envelope.subarray(dataStart)), decipher.final()]);
 }
 
-async function verifyExisting(pathname: string, expectedHash: string) {
-  try {
-    const existingPdf = decryptPdf(await readFile(pathname));
-    return hashDocument(existingPdf).toLowerCase() === expectedHash.toLowerCase();
-  } catch {
-    return false;
-  }
-}
-
-export async function storePassportPdf(verificationId: string, pdf: Buffer, expectedHash: string) {
+/** Stores the encrypted PDF in Postgres so every serverless instance serves the same bytes. */
+export async function storePassportPdf(payload: Payload, verificationId: string, pdf: Buffer, expectedHash: string) {
   if (hashDocument(pdf).toLowerCase() !== expectedHash.toLowerCase()) {
     throw new Error('Generated PDF hash does not match the PassportVersion hash.');
   }
 
-  const directory = storageDirectory();
-  await mkdir(directory, { recursive: true, mode: 0o700 });
-  await chmod(directory, 0o700);
-  const destination = filePath(verificationId);
+  const existing = await findStoredFile(payload, verificationId);
+  if (existing && existing.documentHash.toLowerCase() === expectedHash.toLowerCase()) return;
 
-  // თუ ზუსტად იგივე PDF უკვე არსებობს, ხელახლა აღარ გადავწერთ
-  if (await verifyExisting(destination, expectedHash)) {
+  const data = {
+    verificationId,
+    documentHash: expectedHash,
+    encryptedPdf: encryptPdf(pdf).toString('base64'),
+  };
+  if (existing) {
+    // Replaces a row left by an earlier attempt that never produced a version.
+    await payload.update({ collection: 'passport-files', id: existing.id, data, overrideAccess: true });
     return;
   }
-
-  const temporary = path.join(directory, `.${verificationId}.${randomBytes(8).toString('hex')}.tmp`);
-  try {
-    await writeFile(temporary, encryptPdf(pdf), { flag: 'wx', mode: 0o600 });
-    // rename უზრუნველყოფს არსებული ფაილის უსაფრთხო და ატომურ გადაწერას
-    await rename(temporary, destination);
-  } finally {
-    await unlink(temporary).catch(() => undefined);
-  }
+  await payload.create({ collection: 'passport-files', data, overrideAccess: true });
 }
 
-export async function deletePassportPdf(verificationId: string) {
-  await unlink(filePath(verificationId)).catch((error: unknown) => {
-    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') return;
-    throw error;
+export async function deletePassportPdf(payload: Payload, verificationId: string) {
+  assertVerificationId(verificationId);
+  await payload.delete({
+    collection: 'passport-files',
+    where: { verificationId: { equals: verificationId } },
+    overrideAccess: true,
   });
 }
 
-export async function readPassportPdf(verificationId: string, expectedHash: string) {
-  const pdf = decryptPdf(await readFile(filePath(verificationId)));
+export async function readPassportPdf(payload: Payload, verificationId: string, expectedHash: string) {
+  const stored = await findStoredFile(payload, verificationId);
+  if (!stored) throw new PassportFileMissingError(verificationId);
+
+  const pdf = decryptPdf(Buffer.from(stored.encryptedPdf, 'base64'));
   if (hashDocument(pdf).toLowerCase() !== expectedHash.toLowerCase()) {
     throw new Error('Stored passport PDF failed integrity verification.');
   }
@@ -101,19 +99,15 @@ export async function readPassportPdf(verificationId: string, expectedHash: stri
 }
 
 export async function readOrCreatePassportPdf(
+  payload: Payload,
   verificationId: string,
   expectedHash: string,
   createPdf: () => Promise<Buffer>,
 ) {
   try {
-    return await readPassportPdf(verificationId, expectedHash);
+    return await readPassportPdf(payload, verificationId, expectedHash);
   } catch (error) {
-    if (
-      typeof error !== 'object' || error === null || !('code' in error) ||
-      (error.code !== 'ENOENT' && error.code !== 'ENOTDIR')
-    ) {
-      throw error;
-    }
+    if (!(error instanceof PassportFileMissingError)) throw error;
   }
 
   const pdf = await createPdf();
@@ -122,9 +116,9 @@ export async function readOrCreatePassportPdf(
   }
 
   try {
-    await storePassportPdf(verificationId, pdf, expectedHash);
+    await storePassportPdf(payload, verificationId, pdf, expectedHash);
   } catch (error) {
-    console.warn('Regenerated passport PDF could not be cached to disk.', error);
+    console.warn('Regenerated passport PDF could not be stored.', error);
   }
   return pdf;
 }

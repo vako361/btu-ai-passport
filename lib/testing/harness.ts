@@ -1,6 +1,3 @@
-import { mkdtemp } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import { createDemoSigner, DemoLedger } from '../ledger/demoLedger';
 import { PayloadLedgerStore } from '../ledger/payloadStore';
 import { createFakePayload, type FakePayload } from './fakePayload';
@@ -16,12 +13,9 @@ export function muteConsoleLog(): () => void {
   };
 }
 
-/** Points PDF storage at a throwaway directory; call once per test file before issuing anything. */
-export async function useTemporaryStorage(): Promise<string> {
-  const directory = await mkdtemp(path.join(os.tmpdir(), 'passport-test-'));
-  process.env.PASSPORT_STORAGE_DIR = directory;
+/** Sets a fixed PDF encryption key; call once per test file before issuing anything. */
+export function useTestStorageKey(): void {
   process.env.PASSPORT_STORAGE_KEY = 'ab'.repeat(32);
-  return directory;
 }
 
 export interface Harness {

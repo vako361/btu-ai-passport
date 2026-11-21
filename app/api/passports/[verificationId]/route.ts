@@ -9,7 +9,7 @@ import { readOrCreatePassportPdf } from '@/lib/passportStorage';
 export const runtime = 'nodejs';
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ verificationId: string }> | { verificationId: string } },
 ) {
   const resolvedParams = await params;
@@ -38,7 +38,7 @@ export async function GET(
 
   try {
     const storedVerificationId = version.verificationId;
-    const pdf = await readOrCreatePassportPdf(storedVerificationId, version.documentHash, async () => {
+    const pdf = await readOrCreatePassportPdf(payload, storedVerificationId, version.documentHash, async () => {
       const passport = typeof version.passport === 'object' && version.passport !== null
         ? version.passport
         : null;
@@ -56,14 +56,16 @@ export async function GET(
         issuedAt: version.issuedAt,
         verificationId: storedVerificationId,
         skills: skillsFromSnapshot(version.skillsSnapshot),
-        verifyBaseUrl: getAppEnv().appUrl,
+        verifyBaseUrl: version.verifyBaseUrl || getAppEnv().appUrl,
       });
     });
     const filename = `${storedVerificationId}-v${version.version}.pdf`;
+    const download = new URL(request.url).searchParams.get('download') === '1';
+    const disposition = download ? 'attachment' : 'inline';
     return new Response(new Uint8Array(pdf), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="${filename}"`,
+        'Content-Disposition': `${disposition}; filename="${filename}"`,
         'Cache-Control': 'public, max-age=3600',
         'X-Content-Type-Options': 'nosniff',
       },

@@ -156,7 +156,7 @@ function Verified({ result, justIssued }: { result: PublicVerification; justIssu
           </ul>
 
           <a
-            href={credential.downloadPath}
+            href={`${credential.downloadPath}?download=1`}
             className="mt-8 inline-flex h-12 items-center rounded-xl bg-[#FE017E] px-7 text-sm font-bold text-white shadow-lg shadow-pink-500/20 hover:bg-[#d6006a]"
           >
             Download certificate (PDF)

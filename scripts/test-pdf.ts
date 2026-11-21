@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { PDFDocument, PDFPage, type PDFImage } from 'pdf-lib';
 import { generatePassportPDF } from '../lib/pdfGenerator';
-import { readOrCreatePassportPdf, readPassportPdf, storePassportPdf } from '../lib/passportStorage';
+import { deletePassportPdf, readOrCreatePassportPdf, readPassportPdf, storePassportPdf } from '../lib/passportStorage';
+import { createFakePayload } from '../lib/testing/fakePayload';
 
 const VERIFICATION_ID = 'VER-TEST0123456789ABCDEF01';
 const EXPECTED_PAGES = 7;
@@ -112,26 +113,6 @@ async function checkOfficialBadges() {
   }
 }
 
-async function checkSystemTempStorage(pdf: Buffer) {
-  const previousDir = process.env.PASSPORT_STORAGE_DIR;
-  const previousKey = process.env.PASSPORT_STORAGE_KEY;
-  const verificationId = 'VER-TMPDIRCHECK00000000001';
-  const storedFile = path.join(os.tmpdir(), 'passports', `${verificationId}.pdf.enc`);
-  process.env.PASSPORT_STORAGE_DIR = os.tmpdir();
-  process.env.PASSPORT_STORAGE_KEY = 'ab'.repeat(32);
-  try {
-    const hash = `0x${createHash('sha256').update(pdf).digest('hex')}`;
-    await storePassportPdf(verificationId, pdf, hash);
-    return (await readPassportPdf(verificationId, hash)).equals(pdf) && (await readFile(storedFile)).length > 0;
-  } finally {
-    await rm(storedFile, { force: true });
-    if (previousDir === undefined) delete process.env.PASSPORT_STORAGE_DIR;
-    else process.env.PASSPORT_STORAGE_DIR = previousDir;
-    if (previousKey === undefined) delete process.env.PASSPORT_STORAGE_KEY;
-    else process.env.PASSPORT_STORAGE_KEY = previousKey;
-  }
-}
-
 async function main() {
   const first = await generatePassportPDF(student, skills, VERIFICATION_ID);
   const second = await generatePassportPDF(student, skills, VERIFICATION_ID);
@@ -146,31 +127,26 @@ async function main() {
   const pageCount = document.getPageCount();
   const creationDate = document.getCreationDate();
   const secondCreationDate = secondDocument.getCreationDate();
-  const previousStorageDir = process.env.PASSPORT_STORAGE_DIR;
+  const payload = createFakePayload();
   const previousStorageKey = process.env.PASSPORT_STORAGE_KEY;
-  const storageDir = await mkdtemp(path.join(os.tmpdir(), 'passport-pdf-test-'));
-  process.env.PASSPORT_STORAGE_DIR = storageDir;
   process.env.PASSPORT_STORAGE_KEY = 'ab'.repeat(32);
   let storedBytesMatch = false;
   let missingFileRecoveryWorks = false;
   try {
     const hash = `0x${createHash('sha256').update(first).digest('hex')}`;
-    await storePassportPdf(VERIFICATION_ID, first, hash);
-    storedBytesMatch = (await readPassportPdf(VERIFICATION_ID, hash)).equals(first);
+    await storePassportPdf(payload, VERIFICATION_ID, first, hash);
+    storedBytesMatch = (await readPassportPdf(payload, VERIFICATION_ID, hash)).equals(first);
 
     let regenerateCalls = 0;
-    await unlink(path.join(storageDir, `${VERIFICATION_ID}.pdf.enc`));
-    const recovered = await readOrCreatePassportPdf(VERIFICATION_ID, hash, async () => {
+    await deletePassportPdf(payload, VERIFICATION_ID);
+    const recovered = await readOrCreatePassportPdf(payload, VERIFICATION_ID, hash, async () => {
       regenerateCalls += 1;
       return first;
     });
     missingFileRecoveryWorks = recovered.equals(first)
-      && (await readPassportPdf(VERIFICATION_ID, hash)).equals(first)
+      && (await readPassportPdf(payload, VERIFICATION_ID, hash)).equals(first)
       && regenerateCalls === 1;
   } finally {
-    await rm(storageDir, { recursive: true, force: true });
-    if (previousStorageDir === undefined) delete process.env.PASSPORT_STORAGE_DIR;
-    else process.env.PASSPORT_STORAGE_DIR = previousStorageDir;
     if (previousStorageKey === undefined) delete process.env.PASSPORT_STORAGE_KEY;
     else process.env.PASSPORT_STORAGE_KEY = previousStorageKey;
   }
@@ -186,7 +162,6 @@ async function main() {
     { name: 'identical version inputs regenerate identical PDF bytes', ok: identicalRendersMatch, detail: `bytes=${first.length}` },
     { name: 'stored PDF bytes match issued bytes', ok: storedBytesMatch, detail: `bytes=${first.length}` },
     { name: 'missing encrypted PDF is regenerated and stored', ok: missingFileRecoveryWorks, detail: 'hash-verified recovery' },
-    { name: 'storage works when PASSPORT_STORAGE_DIR is the system temp dir', ok: await checkSystemTempStorage(first), detail: 'tmpdir/passports' },
     { name: 'official badges only, with cached aliases', ok: await checkOfficialBadges(), detail: '3 official PNGs' },
   ];
 

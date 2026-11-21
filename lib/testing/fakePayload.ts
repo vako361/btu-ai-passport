@@ -35,6 +35,7 @@ const SCHEMAS: Record<string, CollectionSchema> = {
     unique: [['verificationId'], ['entryHash'], ['passportId', 'version']],
     defaults: { isLatest: true },
   },
+  'passport-files': { relations: {}, unique: [['verificationId']] },
 };
 
 // Payload returns date fields as full ISO strings regardless of how they were written.

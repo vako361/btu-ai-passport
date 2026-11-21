@@ -1,25 +1,22 @@
 import assert from 'node:assert/strict';
-import { access } from 'node:fs/promises';
-import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { issueCredential } from '../issuance/issueCredential';
-import { addSkill, addStudent, createHarness, muteConsoleLog, useTemporaryStorage, VERIFY_BASE_URL, type Harness } from '../testing/harness';
+import { addSkill, addStudent, createHarness, muteConsoleLog, useTestStorageKey, VERIFY_BASE_URL, type Harness } from '../testing/harness';
 import { verifyCredential } from '../verification';
 import { cleanupVisitorData } from './cleanup';
 import { VISITOR_RECORD_PREFIX } from './config';
 
 let restoreConsole: () => void;
-let storageDirectory: string;
 
-before(async () => {
+before(() => {
   restoreConsole = muteConsoleLog();
-  storageDirectory = await useTemporaryStorage();
+  useTestStorageKey();
 });
 
 after(() => restoreConsole());
 
-const exists = (verificationId: string) =>
-  access(path.join(storageDirectory, `${verificationId}.pdf.enc`)).then(() => true, () => false);
+const hasStoredPdf = (harness: Harness, verificationId: string) =>
+  harness.payload.dump('passport-files').some((file) => file.verificationId === verificationId);
 
 async function issue(harness: Harness, studentId: number, skillId: number, earnedAt: string, visitor: boolean, recordId?: string) {
   return issueCredential({
@@ -41,7 +38,7 @@ describe('cleanupVisitorData', () => {
     const visitorOne = await issue(harness, student.id, b.id, '2026-02-10', true);
     const visitorTwo = await issue(harness, student.id, c.id, '2026-03-10', true);
     assert.equal(visitorTwo.version, 3);
-    assert.equal(await exists(visitorTwo.verificationId), true);
+    assert.equal(hasStoredPdf(harness, visitorTwo.verificationId), true);
 
     const result = await cleanupVisitorData(harness.payload);
 
@@ -55,9 +52,9 @@ describe('cleanupVisitorData', () => {
     assert.equal(restored.latestStatus, 'LATEST');
     assert.equal(restored.issuerAuthenticity, 'VERIFIED');
     assert.equal((await verifyCredential(harness.payload, harness.ledger, visitorOne.verificationId)).recordExists, false);
-    assert.equal(await exists(visitorOne.verificationId), false);
-    assert.equal(await exists(visitorTwo.verificationId), false);
-    assert.equal(await exists(seeded.verificationId), true);
+    assert.equal(hasStoredPdf(harness, visitorOne.verificationId), false);
+    assert.equal(hasStoredPdf(harness, visitorTwo.verificationId), false);
+    assert.equal(hasStoredPdf(harness, seeded.verificationId), true);
 
     // The restored latest version can be extended again, proving the chain is intact.
     const next = await issue(harness, student.id, b.id, '2026-04-10', true);
