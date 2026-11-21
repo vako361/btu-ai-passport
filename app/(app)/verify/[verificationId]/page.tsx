@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { AppHeader } from '@/components/AppHeader';
 import { IssuedToast } from '@/components/IssuedToast';
 import { LinkPending } from '@/components/LinkPending';
@@ -65,16 +66,12 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-function NotFound({ verificationId, reason }: { verificationId: string; reason: 'missing' | 'invalid' | 'unavailable' }) {
-  const copy = {
-    missing: ['No credential found', 'There is no credential registered under this Verification ID. Check the code and try again.'],
-    invalid: ['Invalid Verification ID', 'Verification IDs look like VER-XXXXXXXXXXXXXXXXXXXXXXXX. Check the code and try again.'],
-    unavailable: ['Verification is temporarily unavailable', 'We could not reach the credential ledger. Please try again in a moment.'],
-  }[reason];
-
+function Unavailable({ verificationId }: { verificationId: string }) {
   return (
     <>
-      <Banner tone={reason === 'unavailable' ? 'caution' : 'invalid'} title={copy[0]}>{copy[1]}</Banner>
+      <Banner tone="caution" title="Verification is temporarily unavailable">
+        We could not reach the credential ledger. Please try again in a moment.
+      </Banner>
       <p className="mt-4 break-all font-mono text-xs text-gray-500">{verificationId}</p>
       <Link href="/verify" className="mt-6 inline-flex h-12 items-center gap-2 rounded-xl bg-[#FE017E] px-6 text-sm font-bold text-white hover:bg-[#d6006a]">
         Try another code
@@ -88,6 +85,12 @@ export default async function VerifyCredentialPage({ params, searchParams }: Par
   const { verificationId: rawVerificationId } = await params;
   const { issued } = await searchParams;
   const outcome = await check(rawVerificationId);
+
+  // Must run before any loading boundary streams: once the stream starts, the status is already 200.
+  if (outcome.kind === 'invalid' || (outcome.kind === 'result' && !outcome.result.recordExists)) {
+    notFound();
+  }
+
   const verificationId = normalizeVerificationId(rawVerificationId);
 
   return (
@@ -95,14 +98,8 @@ export default async function VerifyCredentialPage({ params, searchParams }: Par
       <AppHeader subtitle="Credential verification" />
 
       <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
-        {outcome.kind === 'invalid' ? <NotFound verificationId={verificationId} reason="invalid" /> : null}
-        {outcome.kind === 'unavailable' ? <NotFound verificationId={verificationId} reason="unavailable" /> : null}
-
-        {outcome.kind === 'result' && !outcome.result.recordExists ? (
-          <NotFound verificationId={verificationId} reason="missing" />
-        ) : null}
-
-        {outcome.kind === 'result' && outcome.result.recordExists ? <Verified result={outcome.result} justIssued={issued === '1'} /> : null}
+        {outcome.kind === 'unavailable' ? <Unavailable verificationId={verificationId} /> : null}
+        {outcome.kind === 'result' ? <Verified result={outcome.result} justIssued={issued === '1'} /> : null}
       </main>
     </div>
   );

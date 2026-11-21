@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect } from 'react';
 import { useFormStatus } from 'react-dom';
+import { useRouter } from 'next/navigation';
 import { demoLoginAction, type LoginState } from '@/lib/auth/actions';
 import { Spinner } from '@/components/ui/Spinner';
 import { toast } from 'sonner';
@@ -41,10 +42,16 @@ function DemoButton({ role, label, description, tone }: DemoButtonProps) {
 
 export function DemoLogin() {
   const [state, formAction] = useActionState(demoLoginAction, initialState);
+  const router = useRouter();
 
   useEffect(() => {
     if (state.error) toast.error(state.error);
   }, [state.error]);
+
+  // The action returns the destination instead of redirecting, so this is a normal client navigation that shows the target's loading UI.
+  useEffect(() => {
+    if (state.destination) router.replace(state.destination);
+  }, [router, state.destination]);
 
   return (
     <form action={formAction} className="flex flex-col gap-3">

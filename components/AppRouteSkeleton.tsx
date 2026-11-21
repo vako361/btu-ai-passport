@@ -12,7 +12,7 @@ export function AppRouteSkeleton({
   children,
 }: {
   label: string;
-  subtitle: string;
+  subtitle?: string;
   size?: 'narrow' | 'wide';
   children: ReactNode;
 }) {

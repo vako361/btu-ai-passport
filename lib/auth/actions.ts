@@ -1,7 +1,6 @@
 'use server';
 
 import { login, logout } from '@payloadcms/next/auth';
-import { redirect } from 'next/navigation';
 import { AuthenticationError, getPayload, LockedAuth } from 'payload';
 import config from '@payload-config';
 import { ensureDemoAccounts } from '../demo/accounts';
@@ -15,6 +14,8 @@ export interface LoginState {
   fieldErrors?: FieldErrors<'email' | 'password'>;
   /** Echoed back so the email survives a failed attempt. */
   email?: string;
+  /** Set after a successful sign-in. The client navigates here, so the destination's loading UI is shown. */
+  destination?: string;
 }
 
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
@@ -51,7 +52,7 @@ export async function loginAction(_previous: LoginState, formData: FormData): Pr
     return { error: message ?? GENERIC_ERROR, email: parsed.data.email };
   }
 
-  redirect(destination);
+  return { destination };
 }
 
 export async function demoLoginAction(_previous: LoginState, formData: FormData): Promise<LoginState> {
@@ -85,10 +86,9 @@ export async function demoLoginAction(_previous: LoginState, formData: FormData)
     return { error: 'The demo is temporarily unavailable. Please try again shortly.' };
   }
 
-  redirect(destination);
+  return { destination };
 }
 
 export async function logoutAction(): Promise<void> {
   await logout({ config });
-  redirect('/login');
 }

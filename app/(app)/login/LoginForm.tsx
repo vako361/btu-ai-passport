@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { loginAction, type LoginState } from '@/lib/auth/actions';
 import { SubmitButton } from '@/components/ui/SubmitButton';
 import { toast } from 'sonner';
@@ -12,12 +13,18 @@ const inputClass =
 
 export function LoginForm() {
   const [state, formAction] = useActionState(loginAction, initialState);
+  const router = useRouter();
   const emailError = state.fieldErrors?.email;
   const passwordError = state.fieldErrors?.password;
 
   useEffect(() => {
     if (state.error) toast.error(state.error);
   }, [state.error]);
+
+  // The action returns the destination instead of redirecting, so this is a normal client navigation that shows the target's loading UI.
+  useEffect(() => {
+    if (state.destination) router.replace(state.destination);
+  }, [router, state.destination]);
 
   return (
     <form action={formAction} className="flex flex-col gap-5" noValidate>

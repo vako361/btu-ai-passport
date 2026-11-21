@@ -113,7 +113,7 @@ function VerifyPageContent() {
   };
 
   return (
-    <div className="relative min-h-screen flex flex-col text-black font-sans z-0">
+    <div className="relative min-h-screen flex flex-col text-black font-sans z-0 overflow-x-clip">
       
       <div className="absolute inset-0 bg-[#F4F5F7] -z-20"></div>
       <div className="absolute inset-0 bg-[url('/images/background.png')] bg-cover bg-no-repeat bg-center opacity-10 -z-10 pointer-events-none"></div>
