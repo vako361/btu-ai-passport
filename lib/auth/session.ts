@@ -1,8 +1,9 @@
+import { cache } from 'react';
 import { headers as nextHeaders } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { getPayload, type Payload } from 'payload';
-import config from '@payload-config';
+import type { Payload } from 'payload';
 import { sessionUser, type Role, type SessionUser } from '../access';
+import { getRequestPayload } from '../payloadClient';
 
 export const AUTH_COOKIE_NAME = 'payload-token';
 
@@ -10,11 +11,12 @@ export function homePathFor(role: Role): string {
   return role === 'admin' ? '/dashboard' : '/student';
 }
 
-export async function getSession(): Promise<{ payload: Payload; user: SessionUser | null }> {
-  const payload = await getPayload({ config });
+/** Cached per request, so `requireRole` and the page body share one auth lookup. */
+export const getSession = cache(async (): Promise<{ payload: Payload; user: SessionUser | null }> => {
+  const payload = await getRequestPayload();
   const { user } = await payload.auth({ headers: await nextHeaders() });
   return { payload, user: sessionUser({ user }) };
-}
+});
 
 /** Server Component guard: sends visitors to the login page, and users of another role to their own home. */
 export async function requireRole(role: Role): Promise<{ payload: Payload; user: SessionUser }> {

@@ -22,8 +22,14 @@ const serverFunction: ServerFunctionClient = async function (args) {
   })
 }
 
+// The admin is pinned to the light theme; this stops the browser from painting a dark canvas before Payload's CSS loads.
 const Layout = ({ children }: Args) => (
-  <RootLayout config={config} importMap={importMap} serverFunction={serverFunction}>
+  <RootLayout
+    config={config}
+    importMap={importMap}
+    serverFunction={serverFunction}
+    htmlProps={{ style: { colorScheme: 'light' } }}
+  >
     {children}
   </RootLayout>
 )

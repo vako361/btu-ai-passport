@@ -74,7 +74,18 @@ export async function verifyCredential(
   uploadedDocumentHash?: string,
 ): Promise<PublicVerification> {
   const verificationId = normalizeVerificationId(rawVerificationId);
-  const record = await ledger.lookup(verificationId);
+
+  // Both reads depend only on the verification ID, so they run concurrently.
+  const [record, stored] = await Promise.all([
+    ledger.lookup(verificationId),
+    payload.find({
+      collection: 'passport-versions',
+      where: { and: [{ verificationId: { equals: verificationId } }, { issuanceStatus: { equals: 'ISSUED' } }] },
+      limit: 1,
+      depth: 1,
+      overrideAccess: true,
+    }),
+  ]);
 
   const ledgerInfo = (transactionHash: string | null, registeredAt: string | null) => ({
     mode: ledger.mode,
@@ -97,13 +108,6 @@ export async function verifyCredential(
     };
   }
 
-  const stored = await payload.find({
-    collection: 'passport-versions',
-    where: { and: [{ verificationId: { equals: verificationId } }, { issuanceStatus: { equals: 'ISSUED' } }] },
-    limit: 1,
-    depth: 1,
-    overrideAccess: true,
-  });
   const version = stored.docs[0];
   const agrees = version !== undefined && hashesMatch(version.documentHash, record.documentHash);
 

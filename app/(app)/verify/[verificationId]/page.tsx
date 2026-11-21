@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { getPayload } from 'payload';
-import config from '@payload-config';
 import { AppHeader } from '@/components/AppHeader';
 import { IssuedToast } from '@/components/IssuedToast';
+import { LinkPending } from '@/components/LinkPending';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { getLedger } from '@/lib/ledger';
+import { getRequestPayload } from '@/lib/payloadClient';
 import { isValidVerificationId, normalizeVerificationId, verifyCredential, type PublicVerification } from '@/lib/verification';
 
 export const dynamic = 'force-dynamic';
@@ -26,7 +26,7 @@ async function check(rawVerificationId: string): Promise<Outcome> {
   if (!isValidVerificationId(rawVerificationId)) return { kind: 'invalid' };
 
   try {
-    const payload = await getPayload({ config });
+    const payload = await getRequestPayload();
     return { kind: 'result', result: await verifyCredential(payload, getLedger(payload), rawVerificationId) };
   } catch (error) {
     console.error('Verification page could not reach the ledger', error);
@@ -76,8 +76,9 @@ function NotFound({ verificationId, reason }: { verificationId: string; reason: 
     <>
       <Banner tone={reason === 'unavailable' ? 'caution' : 'invalid'} title={copy[0]}>{copy[1]}</Banner>
       <p className="mt-4 break-all font-mono text-xs text-gray-500">{verificationId}</p>
-      <Link href="/verify" className="mt-6 inline-flex h-12 items-center rounded-xl bg-[#FE017E] px-6 text-sm font-bold text-white hover:bg-[#d6006a]">
+      <Link href="/verify" className="mt-6 inline-flex h-12 items-center gap-2 rounded-xl bg-[#FE017E] px-6 text-sm font-bold text-white hover:bg-[#d6006a]">
         Try another code
+        <LinkPending className="h-4 w-4" />
       </Link>
     </>
   );

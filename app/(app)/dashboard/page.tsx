@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AppHeader } from '@/components/AppHeader';
+import { LinkPending } from '@/components/LinkPending';
 import { LogoutButton } from '@/components/LogoutButton';
 import { requireRole } from '@/lib/auth/session';
 import { isDemoEnabled } from '@/lib/demo/config';
@@ -112,8 +113,9 @@ export default async function DashboardPage() {
                     </div>
                     <div className="flex items-center gap-4 text-sm">
                       <span className="text-gray-500">{formatDate(version.issuedAt)}</span>
-                      <Link href={`/verify/${encodeURIComponent(version.verificationId)}`} className="font-bold text-[#FE017E] hover:underline">
+                      <Link href={`/verify/${encodeURIComponent(version.verificationId)}`} className="inline-flex items-center gap-1.5 font-bold text-[#FE017E] hover:underline">
                         Verify
+                        <LinkPending />
                       </Link>
                       <a href={`/api/passports/${encodeURIComponent(version.verificationId)}`} className="font-bold text-gray-700 hover:underline">
                         PDF

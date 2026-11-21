@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AppHeader } from '@/components/AppHeader';
+import { LinkPending } from '@/components/LinkPending';
 import { LogoutButton } from '@/components/LogoutButton';
 import { linkedStudentId } from '@/lib/access';
 import { requireRole } from '@/lib/auth/session';
@@ -25,14 +26,13 @@ export default async function StudentPortalPage() {
 
   // Every read below runs with the student's own access rules, not as an administrator.
   const studentId = linkedStudentId(user);
-  const students = studentId === null
-    ? null
-    : await payload.find({ collection: 'students', limit: 1, depth: 0, overrideAccess: false, user });
+  const [students, passports] = studentId === null
+    ? [null, null]
+    : await Promise.all([
+      payload.find({ collection: 'students', where: { id: { equals: studentId } }, limit: 1, depth: 0, overrideAccess: false, user }),
+      payload.find({ collection: 'passports', where: { studentRecord: { equals: studentId } }, limit: 1, depth: 1, overrideAccess: false, user }),
+    ]);
   const student = students?.docs[0] ?? null;
-
-  const passports = student
-    ? await payload.find({ collection: 'passports', limit: 1, depth: 1, overrideAccess: false, user })
-    : null;
   const passport = passports?.docs[0] ?? null;
   const latestVersion = passport && typeof passport.latestVersion === 'object' ? passport.latestVersion : null;
 
@@ -95,9 +95,10 @@ export default async function StudentPortalPage() {
               </a>
               <Link
                 href={`/verify/${encodeURIComponent(latestVersion.verificationId)}`}
-                className="inline-flex h-12 items-center justify-center rounded-xl border-2 border-gray-200 bg-white px-7 text-sm font-bold text-gray-700 transition-all hover:border-gray-300 hover:bg-gray-50"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border-2 border-gray-200 bg-white px-7 text-sm font-bold text-gray-700 transition-all hover:border-gray-300 hover:bg-gray-50"
               >
                 Public verification page
+                <LinkPending />
               </Link>
             </div>
 

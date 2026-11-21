@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useState, Suspense, useTransition } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -32,6 +32,7 @@ function VerifyPageContent() {
   const [result, setResult] = useState<VerificationResult | null>(null);
   
   const [loadingType, setLoadingType] = useState<'id' | 'file' | null>(null);
+  const [isNavigating, startNavigation] = useTransition();
   const [isDragging, setIsDragging] = useState(false);
 
   const runVerification = async (formData: FormData, type: 'id' | 'file') => {
@@ -101,8 +102,10 @@ function VerifyPageContent() {
     e.preventDefault();
     const id = verificationId.trim();
     if (!id) return;
-    setLoadingType('id');
-    router.push(`/verify/${encodeURIComponent(id)}`);
+    // The transition keeps the pending state until the route commits, and clears it if navigation fails.
+    startNavigation(() => {
+      router.push(`/verify/${encodeURIComponent(id)}`);
+    });
   };
 
   const closeModal = () => {
@@ -165,16 +168,16 @@ function VerifyPageContent() {
                   value={verificationId}
                   onChange={(e) => { setVerificationId(e.target.value); setFile(null); }}
                   className="w-full border border-gray-200 rounded-lg px-4 h-12 text-[15px] outline-none focus:border-[#FE017E] focus:ring-1 focus:ring-[#FE017E] transition-all font-medium bg-white"
-                  disabled={loadingType !== null}
+                  disabled={loadingType !== null || isNavigating}
                 />
               </div>
               <div className="flex w-full md:w-auto">
                 <button 
                   type="submit" 
-                  disabled={loadingType !== null || !verificationId}
+                  disabled={loadingType !== null || isNavigating || !verificationId}
                   className="w-full md:w-auto bg-[#FE017E] cursor-pointer hover:bg-[#d6006a] hover:scale-105 disabled:bg-gray-300 disabled:hover:scale-100 disabled:cursor-not-allowed text-white text-[16px] font-bold h-12 px-10 rounded-lg transition-all duration-300 flex items-center justify-center shadow-sm"
                 >
-                  {loadingType === 'id' ? 'Checking...' : 'Verify'}
+                  {isNavigating ? 'Checking...' : 'Verify'}
                 </button>
               </div>
             </form>
