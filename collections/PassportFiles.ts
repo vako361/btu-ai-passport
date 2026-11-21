@@ -15,6 +15,7 @@ export const PassportFiles: CollectionConfig = {
   fields: [
     { name: 'verificationId', type: 'text', required: true, unique: true },
     { name: 'documentHash', type: 'text', required: true },
-    { name: 'encryptedPdf', type: 'text', required: true },
+    // Base64 of an encrypted PDF is ~1 MB, above Payload's 40,000-character default. Column stays varchar, so no migration.
+    { name: 'encryptedPdf', type: 'text', required: true, maxLength: 10_000_000 },
   ],
 };

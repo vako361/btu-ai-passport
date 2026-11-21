@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPayload } from 'payload';
 import config from '@payload-config';
-import { getAppEnv } from '@/lib/env';
-import { renderPassportPdf, skillsFromSnapshot } from '@/lib/issuance/pdf';
-import { derivePassportId } from '@/lib/issuance/utils';
+import { renderStoredVersionPdf } from '@/lib/issuance/regenerate';
 import { readOrCreatePassportPdf } from '@/lib/passportStorage';
 
 export const runtime = 'nodejs';
@@ -38,26 +36,10 @@ export async function GET(
 
   try {
     const storedVerificationId = version.verificationId;
-    const pdf = await readOrCreatePassportPdf(payload, storedVerificationId, version.documentHash, async () => {
-      const passport = typeof version.passport === 'object' && version.passport !== null
-        ? version.passport
-        : null;
-      if (!passport) throw new Error('Passport relation is unavailable for PDF regeneration.');
-
-      return renderPassportPdf({
-        holder: {
-          studentId: passport.studentId,
-          firstName: passport.firstName,
-          lastName: passport.lastName,
-          passportId: passport.passportId || derivePassportId(passport.studentId),
-          firstIssuedAt: passport.firstIssuedAt ?? version.issuedAt,
-        },
-        version: version.version,
-        issuedAt: version.issuedAt,
-        verificationId: storedVerificationId,
-        skills: skillsFromSnapshot(version.skillsSnapshot),
-        verifyBaseUrl: version.verifyBaseUrl || getAppEnv().appUrl,
-      });
+    const pdf = await readOrCreatePassportPdf(payload, storedVerificationId, version.documentHash, () => {
+      // Never guess the origin: a different one changes the QR and therefore the hash.
+      if (!version.verifyBaseUrl) throw new Error(`No verifyBaseUrl recorded for ${storedVerificationId}.`);
+      return renderStoredVersionPdf(version, version.verifyBaseUrl);
     });
     const filename = `${storedVerificationId}-v${version.version}.pdf`;
     const download = new URL(request.url).searchParams.get('download') === '1';
